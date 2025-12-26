@@ -1,1 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fair Bedtime Picker</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background:#0b1220; color:#eef2ff; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 18px; }
+    h1 { font-size: 22px; margin: 8px 0 14px; }
+    .card { background:#121a2c; border:1px solid #23304f; border-radius: 14px; padding: 14px; margin: 12px 0; }
+    .row { display:flex; gap: 12px; flex-wrap: wrap; }
+    .col { flex: 1 1 260px; }
+    label { display:block; font-size: 13px; opacity:.9; margin-bottom: 6px; }
+    input[type="text"] { width:100%; padding: 12px; border-radius: 12px; border:1px solid #2b3a5f; background:#0e1628; color:#eef2ff; }
+    .btnrow { display:flex; gap:10px; flex-wrap: wrap; margin-top: 10px; }
+    button { padding: 12px 14px; border-radius: 14px; border: 1px solid #2b3a5f; background:#0e1628; color:#eef2ff; font-weight: 650; }
+    button.primary { background:#1f3bff; border-color:#1f3bff; }
+    button.good { background:#1b7f4a; border-color:#1b7f4a; }
+    button.bad { background:#b42318; border-color:#b42318; }
+    .pill { display:inline-block; padding: 6px 10px; border-radius: 999px; border:1px solid #2b3a5f; background:#0e1628; margin: 6px 6px 0 0; font-size: 12px; }
+    .small { font-size: 12px; opacity:.85; line-height: 1.35; }
+    .opt { display:flex; gap:10px; align-items:center; margin-top: 6px; }
+    .opt input { transform: scale(1.2); }
+    .result { border-top:1px solid #23304f; padding-top: 10px; margin-top: 10px; }
+    .title { font-size: 16px; font-weight: 750; margin: 0; }
+    .meta { font-size: 12px; opacity:.9; margin-top: 4px; }
+    .why { margin-top: 8px; }
+    .divider { height:1px; background:#23304f; margin: 12px 0; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Fair Bedtime Picker (US Netflix + Disney+ • Ages 7–13 • Never Scary)</h1>
 
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <label>Mode</label>
+        <div class="btnrow">
+          <button id="modeBed" class="primary" type="button">Bedtime</button>
+          <button id="modeWknd" type="button">Weekend</button>
+        </div>
+        <div class="small" id="modeNote" style="margin-top:8px;">
+          Bedtime = calmer, lower tension, avoid cliffhangers.
+        </div>
+      </div>
+      <div class="col">
+        <label>Quick filters (optional)</label>
+        <div class="opt"><input id="fShort" type="checkbox"><span>Short episodes only</span></div>
+        <div class="opt"><input id="fNoLoud" type="checkbox"><span>No loud / chaotic</span></div>
+        <div class="opt"><input id="fNoSad" type="checkbox"><span>No sad themes</span></div>
+        <div class="opt"><input id="fNoFight" type="checkbox"><span>No fighting</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <label>H’s pick (title or “type”)</label>
+        <input id="pickA" type="text" placeholder="Example: Is It Cake / camp comedy / science experiments" />
+      </div>
+      <div class="col">
+        <label>K’s pick (title or “type”)</label>
+        <input id="pickB" type="text" placeholder="Example: Nailed It / Fuller House / Brainchild" />
+      </div>
+    </div>
+    <div class="btnrow">
+      <button id="go" class="primary" type="button">Get 3 picks</button>
+      <button id="reroll" type="button">Reroll</button>
+      <button id="reset" class="bad" type="button">Reset memory</button>
+    </div>
+    <div class="small" style="margin-top:8px;">
+      The app remembers likes/dislikes on this device and avoids repeats.
+    </div>
+  </div>
+
+  <div class="card" id="outCard" style="display:none;">
+    <div class="small">
+      <span class="pill" id="modePill"></span>
+      <span class="pill" id="fairPill"></span>
+      <span class="pill" id="memPill"></span>
+    </div>
+    <div id="results"></div>
+  </div>
+</div>
+
+<script>
+/**
+ * Fair Bedtime Picker
+ * - US Netflix + Disney+ (best-effort labels; catalogs change)
+ * - Ages 7–13
+ * - NEVER scary/horror (and avoids “spooky bedtime” vibes)
+ * - “Too babyish” prevention (preschoolish=true excluded)
+ * - Local-only memory (likes/dislikes/recently watched/fairness)
+ */
+
+const STORAGE_KEY = "fairPickerMemory_v2";
+
+const DEFAULT_MEMORY = {
+  mode: "Bedtime",
+  dislikes: [],          // titles
+  likes: [],             // titles
+  recentlyWatched: [],   // {title, ts}
+  lastWinner: null       // "H" or "K"
+};
+
+function loadMem() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || structuredClone(DEFAULT_MEMORY); }
+  catch { return structuredClone(DEFAULT_MEMORY); }
+}
+function saveMem(m){ localStorage.setItem(STORAGE_KEY, JSON.stringify(m)); }
+
+let mem = loadMem();
+
+/**
+ * Tailored library based on your kids’ likes:
+ * Is It Cake, T.O.T.S., Bunk’d, Fuller House, Bluey, Nailed It, etc.
+ * Bluey is set as preschoolish:true by default so it won’t dominate results.
+ * Flip it to false if you want it suggested more often.
+ */
+const LIB = [
+  // NETFLIX — weekend-first (high hit-rate with your list)
+  { title:"Is It Cake?", platform:"Netflix", vibeTags:["funny","competition"], themes:["food","games"], intensity:"medium", episodeLen:"30-45", ageMin:8, ageMax:13, bedtimeOk:false, weekendOk:true, preschoolish:false },
+  { title:"Nailed It!", platform:"Netflix", vibeTags:["funny","competition"], themes:["food","fails"], intensity:"medium", episodeLen:"30-45", ageMin:8, ageMax:13, bedtimeOk:false, weekendOk:true, preschoolish:false },
+
+  // NETFLIX — calmer but still “older-kid smart”
+  { title:"Brainchild", platform:"Netflix", vibeTags:["curious","fast"], themes:["science","facts"], intensity:"medium", episodeLen:"20-30", ageMin:8, ageMax:13, bedtimeOk:true, weekendOk:true, preschoolish:false },
+  { title:"Emily's Wonder Lab", platform:"Netflix", vibeTags:["curious","fun"], themes:["science","experiments"], intensity:"medium", episodeLen:"20-30", ageMin:7, ageMax:13, bedtimeOk:true, weekendOk:true, preschoolish:false },
+  { title:"The Magic School Bus Rides Again", platform:"Netflix", vibeTags:["curious","adventure"], themes:["science","school"], intensity:"low", episodeLen:"20-30", ageMin:7, ageMax:12, bedtimeOk:true, weekendOk:true, preschoolish:false },
+
+  // NETFLIX — sitcom / “family comfort” lane (Fuller House vibe)
+  { title:"Fuller House", platform:"Netflix", vibeTags:["funny","comfort"], themes:["family","friends"], intensity:"low", episodeLen:"20-30", ageMin:8, ageMax:13, bedtimeOk:true, weekendOk:true, preschoolish:false },
+
+  // DISNEY+ — Disney Channel-style comedy lane (Bunk’d vibe)
+  { title:"Bunk’d", platform:"Disney+", vibeTags:["funny","chaotic"], themes:["camp","friends"], intensity:"medium", episodeLen:"20-30", ageMin:7, ageMax:13, bedtimeOk:false, weekendOk:true, preschoolish:false },
+
+  // DISNEY+ — clever/brainy, bedtime-safe
+  { title:"Brain Games", platform:"Disney+", vibeTags:["curious","clever"], themes:["puzzles","brain"], intensity:"low", episodeLen:"20-30", ageMin:8, ageMax:13, bedtimeOk:true, weekendOk:true, preschoolish:false },
+  { title:"Marvel's Hero Project", platform:"Disney+", vibeTags:["uplifting","inspiring"], themes:["real people","helping"], intensity:"low", episodeLen:"20-30", ageMin:7, ageMax:13, bedtimeOk:true, weekendOk:true, preschoolish:false },
+
+  // OPTIONAL: included for your list, but suppressed by default as “too babyish”
+  { title:"Bluey", platform:"Disney+", vibeTags:["comfort","kind"], themes:["family","life lessons"], intensity:"low", episodeLen:"short", ageMin:7, ageMax:13, bedtimeOk:true, weekendOk:false, preschoolish:true },
+
+  // Included because you mentioned it (but it *is* younger-skewing). It will generally be filtered out by “not babyish.”
+  { title:"T.O.T.S.", platform:"Disney+", vibeTags:["kind","comfort"], themes:["helpers","animals"], intensity:"low", episodeLen:"short", ageMin:7, ageMax:10, bedtimeOk:true, weekendOk:true, preschoolish:true },
+];
+
+/**
+ * Hard disqualifier keywords for user input (never scary).
+ * This blocks suggestions by input intent and reinforces bedtime safety.
+ */
+const SCARY_WORDS = /(horror|scary|haunted|ghost|demon|possession|slasher|terrify|nightmare|creepy|spooky|killer)/i;
+
+// Lightweight “tag extraction” from input text
+function tagsFromText(t){
+  t = (t||"").toLowerCase();
+  const tags = new Set();
+  const add = (...xs)=>xs.forEach(x=>tags.add(x));
+
+  // Core tags
+  if (/(science|experiment|lab|facts|learn|brain|stem)/.test(t)) add("curious","science");
+  if (/(animal|pet|zoo|wild|creature)/.test(t)) add("animals");
+  if (/(funny|comedy|laugh)/.test(t)) add("funny");
+  if (/(helper|help|kind|friend|team)/.test(t)) add("kind");
+  if (/(mystery|detective)/.test(t)) add("mystery");
+  if (/(craft|bake|cook|food)/.test(t)) add("food");
+  if (/(game|challenge|competition)/.test(t)) add("competition");
+  if (/(space|robot|tech|invention)/.test(t)) add("inventions");
+
+  // YOUR REQUESTED ADDITIONS (food/sitcom signals)
+  if (/(cake|bake|nailed|dessert|cook)/.test(t)) add("food","competition","funny");
+  if (/(bunk|camp|sitcom|house|fuller)/.test(t)) add("funny","comfort");
+
+  // Mode hints (optional)
+  if (/(sleep|bedtime|calm|cozy|relax)/.test(t)) add("calm");
+  if (/(weekend|hype|party|exciting)/.test(t)) add("energetic");
+
+  return [...tags];
+}
+
+function modeOk(item, mode){
+  return mode === "Bedtime" ? item.bedtimeOk : item.weekendOk;
+}
+
+function violatesFilters(item){
+  // “Not babyish” default: filter preschool-coded entries.
+  if (item.preschoolish) return true;
+
+  // Memory-based exclusion
+  if (mem.dislikes.includes(item.title)) return true;
+
+  // Avoid repeats in last 7 days
+  const weekMs = 7*24*60*60*1000;
+  if (mem.recentlyWatched.some(x => x.title === item.title && (Date.now()-x.ts) < weekMs)) return true;
+
+  // Quick filters
+  const shortOnly = document.getElementById("fShort").checked;
+  const noLoud = document.getElementById("fNoLoud").checked;
+  const noSad = document.getElementById("fNoSad").checked;
+  const noFight = document.getElementById("fNoFight").checked;
+
+  if (shortOnly && !["short","10-20","20-30"].includes(item.episodeLen)) return true;
+  if (noLoud && item.intensity === "medium") return true;
+  if (noSad && /sad/.test(item.vibeTags.join(" "))) return true;
+  if (noFight && /fight|battle/.test(item.themes.join(" "))) return true;
+
+  return false;
+}
+
+function scoreItem(item, tagsA, tagsB, mode){
+  // Overlap
+  const overlap = new Set([...tagsA].filter(x => tagsB.includes(x)));
+  let score = overlap.size * 3;
+
+  // Match either kid
+  const allTags = new Set([...tagsA, ...tagsB]);
+  for (const t of allTags) {
+    if (item.vibeTags.includes(t) || item.themes.includes(t)) score += 2;
+  }
+
+  // Mode tuning
+  if (mode === "Bedtime") {
+    if (item.intensity === "low") score += 5;
+    if (item.intensity === "medium") score -= 3;
+    // Prefer shorter for bedtime if possible
+    if (["short","10-20","20-30"].includes(item.episodeLen)) score += 1;
+  } else {
+    if (item.intensity === "medium") score += 2;
+  }
+
+  // Fairness nudge
+  if (mem.lastWinner === "H") {
+    const kFit = tagsB.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
+    score += kFit;
+  }
+  if (mem.lastWinner === "K") {
+    const hFit = tagsA.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
+    score += hFit;
+  }
+
+  return { score, overlap: [...overlap] };
+}
+
+function pick3(){
+  const pickA = document.getElementById("pickA").value.trim();
+  const pickB = document.getElementById("pickB").value.trim();
+  const mode = mem.mode;
+
+  // If either input asks for scary content, refuse by forcing calm/brainy alternatives
+  const scaryRequested = SCARY_WORDS.test(pickA) || SCARY_WORDS.test(pickB);
+
+  const tagsA = tagsFromText(pickA);
+  const tagsB = tagsFromText(pickB);
+
+  // Defaults if no tags
+  if (tagsA.length === 0) tagsA.push(mode==="Bedtime" ? "comfort" : "funny");
+  if (tagsB.length === 0) tagsB.push(mode==="Bedtime" ? "comfort" : "funny");
+
+  // If scary was requested, override with safe tags
+  if (scaryRequested) {
+    tagsA.length = 0; tagsB.length = 0;
+    tagsA.push("comfort","curious"); tagsB.push("comfort","funny");
+  }
+
+  const candidates = [];
+  for (const item of LIB) {
+    if (!modeOk(item, mode)) continue;
+    if (violatesFilters(item)) continue;
+    const s = scoreItem(item, tagsA, tagsB, mode);
+    candidates.push({ item, ...s });
+  }
+
+  candidates.sort((a,b)=>b.score-a.score);
+
+  // If fewer than 3, relax “recently watched” restriction (but keep dislikes + not-babyish)
+  let top = candidates.slice(0,3);
+  if (top.length < 3) {
+    const relaxed = [];
+    for (const item of LIB) {
+      if (!modeOk(item, mode)) continue;
+      if (item.preschoolish) continue;
+      if (mem.dislikes.includes(item.title)) continue;
+      const s = scoreItem(item, tagsA, tagsB, mode);
+      relaxed.push({ item, ...s });
+    }
+    relaxed.sort((a,b)=>b.score-a.score);
+    top = relaxed.slice(0,3);
+  }
+
+  renderResults(top, {pickA, pickB, tagsA, tagsB, mode, scaryRequested});
+}
+
+function renderResults(top, ctx){
+  const out = document.getElementById("outCard");
+  out.style.display = "block";
+
+  document.getElementById("modePill").textContent = `Mode: ${ctx.mode}`;
+  document.getElementById("fairPill").textContent = `Fairness: last winner ${mem.lastWinner || "none"}`;
+  document.getElementById("memPill").textContent = `Memory: ${mem.likes.length} likes • ${mem.dislikes.length} no-thanks`;
+
+  const container = document.getElementById("results");
+  container.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.className = "small";
+  header.innerHTML = `
+    <div><strong>H:</strong> ${escapeHtml(ctx.pickA || "(none)")}</div>
+    <div><strong>K:</strong> ${escapeHtml(ctx.pickB || "(none)")}</div>
+    ${ctx.scaryRequested ? `<div style="margin-top:8px;"><strong>Note:</strong> Scary requests are blocked — showing safe picks only.</div>` : ""}
+  `;
+  container.appendChild(header);
+
+  const divider = document.createElement("div");
+  divider.className = "divider";
+  container.appendChild(divider);
+
+  top.forEach((x, idx) => {
+    const r = document.createElement("div");
+    r.className = "result";
+    const why = buildWhy(x, ctx);
+    r.innerHTML = `
+      <p class="title">${idx+1}. ${escapeHtml(x.item.title)}</p>
+      <div class="meta">${escapeHtml(x.item.platform)} • ${escapeHtml(x.item.episodeLen)} • intensity: ${escapeHtml(x.item.intensity)}</div>
+      <div class="why">${escapeHtml(why)}</div>
+      <div class="btnrow" style="margin-top:10px;">
+        <button class="good" type="button" data-act="watched" data-title="${escapeAttr(x.item.title)}">We watched it</button>
+        <button class="bad" type="button" data-act="dislike" data-title="${escapeAttr(x.item.title)}">No thanks</button>
+      </div>
+    `;
+    container.appendChild(r);
+  });
+
+  container.addEventListener("click", onResultClick, { once:false });
+}
+
+function buildWhy(x, ctx){
+  // 1 sentence: connect to both kids using overlap + mode
+  const overlap = x.overlap;
+  const bits = [];
+
+  if (overlap.includes("food") || x.item.themes.includes("food")) bits.push("fun food/competition energy");
+  if (overlap.includes("science") || x.item.themes.includes("science")) bits.push("curiosity/science");
+  if (overlap.includes("funny") || x.item.vibeTags.includes("funny")) bits.push("humor");
+  if (overlap.includes("comfort") || x.item.vibeTags.includes("comfort")) bits.push("comfort TV");
+  if (overlap.includes("kind") || x.item.vibeTags.includes("uplifting")) bits.push("good vibes");
+
+  if (ctx.mode === "Bedtime") bits.push("bedtime-safe pacing");
+  else bits.push("weekend energy");
+
+  const pickText = bits.length ? bits.join(", ") : "a fair mix of both picks";
+  return `Matches both of you with ${pickText}.`;
+}
+
+function onResultClick(e){
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const act = btn.getAttribute("data-act");
+  const title = btn.getAttribute("data-title");
+  if (!title) return;
+
+  if (act === "watched") {
+    if (!mem.likes.includes(title)) mem.likes.push(title);
+    mem.recentlyWatched.unshift({title, ts: Date.now()});
+    mem.recentlyWatched = mem.recentlyWatched.slice(0, 50);
+
+    // Winner logic: whichever input matches the chosen title more
+    const item = LIB.find(x=>x.title===title);
+    const tagsA = tagsFromText(document.getElementById("pickA").value);
+    const tagsB = tagsFromText(document.getElementById("pickB").value);
+    const aFit = tagsA.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
+    const bFit = tagsB.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
+    mem.lastWinner = (aFit === bFit) ? (mem.lastWinner === "H" ? "K" : "H") : (aFit > bFit ? "H" : "K");
+
+    saveMem(mem);
+    pick3();
+  }
+
+  if (act === "dislike") {
+    if (!mem.dislikes.includes(title)) mem.dislikes.push(title);
+    mem.likes = mem.likes.filter(x=>x!==title);
+    saveMem(mem);
+    pick3();
+  }
+}
+
+function setMode(mode){
+  mem.mode = mode;
+  saveMem(mem);
+  const bed = document.getElementById("modeBed");
+  const wk = document.getElementById("modeWknd");
+  const note = document.getElementById("modeNote");
+  if (mode === "Bedtime") {
+    bed.classList.add("primary"); wk.classList.remove("primary");
+    note.textContent = "Bedtime = calmer, lower tension, avoid cliffhangers.";
+  } else {
+    wk.classList.add("primary"); bed.classList.remove("primary");
+    note.textContent = "Weekend = more energy allowed (still safe, never scary).";
+  }
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+
+document.getElementById("modeBed").addEventListener("click", ()=>setMode("Bedtime"));
+document.getElementById("modeWknd").addEventListener("click", ()=>setMode("Weekend"));
+document.getElementById("go").addEventListener("click", pick3);
+document.getElementById("reroll").addEventListener("click", pick3);
+document.getElementById("reset").addEventListener("click", ()=>{
+  localStorage.removeItem(STORAGE_KEY);
+  mem = loadMem();
+  setMode(mem.mode);
+  document.getElementById("outCard").style.display = "none";
+});
+
+setMode(mem.mode);
+</script>
+</body>
+</html>
