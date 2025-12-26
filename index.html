@@ -334,7 +334,119 @@
 
   function getLib(){
     const custom = Array.isArray(mem.customLib) ? mem.customLib : [];
-    return BASE_LIB.concat(custom);
+    return BASE_LIB.concat(custom);// ============================
+// BACKFILL LIB (200+ more picks)
+// ============================
+const BACKFILL_LIB = [
+  // -------- Netflix: shows
+  I("The Worst Witch","Netflix","show",["comfort","adventure"],["school","friends"],"low","20-30",8,13,true,true),
+  I("The Healing Powers of Dude","Netflix","show",["comfort","funny"],["school","family","pets"],"low","20-30",8,13,true,true),
+  I("Waffles + Mochi","Netflix","show",["curious","fun"],["food","learning"],"low","20-30",7,12,true,true),
+  I("Waffles + Mochi's Restaurant","Netflix","show",["curious","fun"],["food","learning"],"low","20-30",7,13,true,true),
+  I("The Letter for the King","Netflix","show",["adventure","clever"],["quests","friends"],"medium","20-30",10,13,false,true),
+  I("Raising Dion","Netflix","show",["comfort","adventure"],["family","powers"],"medium","20-30",10,13,false,true),
+  I("Lost in Space","Netflix","show",["adventure","clever"],["space","family"],"medium","40-60",10,13,false,true),
+  I("A Tale Dark & Grimm","Netflix","show",["clever","adventure"],["fairy tales","mystery"],"medium","20-30",10,13,false,true),
+  I("The Dragon Prince","Netflix","show",["adventure","clever"],["quests","friends"],"medium","20-30",10,13,false,true),
+  I("Kipo and the Age of Wonderbeasts","Netflix","show",["adventure","uplifting"],["friends","quests"],"medium","20-30",9,13,false,true),
+  I("Jurassic World Camp Cretaceous","Netflix","show",["adventure"],["dinosaurs","friends"],"medium","20-30",10,13,false,true),
+  I("The Deep","Netflix","show",["adventure"],["ocean","family"],"low","20-30",8,13,true,true),
+  I("Horsin' Around (family-friendly horse series)","Netflix","show",["comfort"],["animals","family"],"low","20-30",8,13,true,true),
+  I("The Adventures of Puss in Boots","Netflix","show",["funny","adventure"],["friends","quests"],"medium","20-30",8,13,false,true),
+  I("Trollhunters: Tales of Arcadia","Netflix","show",["adventure"],["friends","quests"],"medium","20-30",11,13,false,true),
+  I("3Below: Tales of Arcadia","Netflix","show",["adventure","funny"],["space","friends"],"medium","20-30",10,13,false,true),
+  I("Wizards: Tales of Arcadia","Netflix","show",["adventure"],["magic","friends"],"medium","20-30",11,13,false,true),
+  I("Gortimer Gibbon's Life on Normal Street","Netflix","show",["comfort","clever"],["school","friends"],"low","20-30",8,13,true,true),
+  I("Malibu Rescue","Netflix","show",["funny","adventure"],["friends","beach"],"medium","20-30",9,13,false,true),
+  I("The Big Show Show","Netflix","show",["funny","comfort"],["family"],"low","20-30",8,13,true,true),
+  I("DinoTrux","Netflix","show",["adventure","funny"],["machines","friends"],"medium","20-30",7,11,false,true, true),
+  I("Dragons: Rescue Riders","Netflix","show",["adventure"],["dragons","friends"],"low","20-30",7,10,true,true, true),
+
+  // -------- Netflix: movies
+  I("The Angry Birds Movie 2","Netflix","movie",["funny","adventure"],["friends"],"medium","movie",7,13,false,true),
+  I("The Sleepover","Netflix","movie",["funny","adventure"],["family","mystery"],"medium","movie",9,13,false,true),
+  I("The Monkey King","Netflix","movie",["adventure","funny"],["quests","friends"],"medium","movie",9,13,false,true),
+  I("Nimona","Netflix","movie",["adventure","clever"],["friends","heroes"],"medium","movie",11,13,false,true),
+  I("Paddington","Netflix","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
+  I("Paddington 2","Netflix","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
+
+  // -------- Disney+: shows
+  I("The Suite Life of Zack & Cody","Disney+","show",["funny","chaotic"],["siblings","hotel"],"medium","20-30",8,13,false,true),
+  I("The Suite Life on Deck","Disney+","show",["funny","chaotic"],["siblings","travel"],"medium","20-30",8,13,false,true),
+  I("Wizards of Waverly Place","Disney+","show",["funny","adventure"],["family","magic"],"medium","20-30",9,13,false,true),
+  I("K.C. Undercover","Disney+","show",["funny","adventure"],["spy","family"],"medium","20-30",8,13,false,true),
+  I("Kim Possible","Disney+","show",["funny","adventure"],["heroes","school"],"medium","20-30",8,13,false,true),
+  I("Star vs. the Forces of Evil","Disney+","show",["funny","adventure"],["friends","magic"],"medium","20-30",9,13,false,true),
+  I("Amphibia","Disney+","show",["adventure","funny"],["friends","quests"],"medium","20-30",9,13,false,true),
+  I("The Owl House","Disney+","show",["adventure","clever"],["friends","magic"],"medium","20-30",10,13,false,true),
+  I("Big Hero 6: The Series","Disney+","show",["adventure","funny"],["heroes","friends"],"medium","20-30",8,13,false,true),
+  I("Miraculous: Tales of Ladybug & Cat Noir","Disney+","show",["adventure"],["heroes","school"],"medium","20-30",8,13,false,true),
+  I("Phineas and Ferb: Candace Against the Universe","Disney+","movie",["funny","adventure"],["family","music"],"medium","movie",7,13,false,true),
+
+  // -------- Disney+: movies (more)
+  I("Frozen","Disney+","movie",["comfort","music"],["family"],"low","movie",7,13,true,true),
+  I("Frozen II","Disney+","movie",["adventure","music"],["family"],"medium","movie",7,13,false,true),
+  I("Cars","Disney+","movie",["funny","comfort"],["sports","friends"],"low","movie",7,13,true,true),
+  I("Cars 2","Disney+","movie",["adventure","funny"],["friends","travel"],"medium","movie",7,13,false,true),
+  I("Cars 3","Disney+","movie",["uplifting"],["sports","friends"],"low","movie",7,13,true,true),
+  I("Toy Story","Disney+","movie",["comfort","funny"],["friends"],"low","movie",7,13,true,true),
+  I("Toy Story 2","Disney+","movie",["comfort","funny"],["friends"],"low","movie",7,13,true,true),
+  I("Toy Story 3","Disney+","movie",["comfort","uplifting"],["friends"],"medium","movie",8,13,false,true),
+  I("Toy Story 4","Disney+","movie",["comfort","uplifting"],["friends"],"low","movie",7,13,true,true),
+  I("Monsters, Inc.","Disney+","movie",["funny","comfort"],["friends"],"low","movie",7,13,true,true),
+  I("Monsters University","Disney+","movie",["funny","comfort"],["school","friends"],"low","movie",7,13,true,true),
+  I("Coco","Disney+","movie",["uplifting","music"],["family"],"medium","movie",8,13,false,true),
+  I("Up","Disney+","movie",["uplifting"],["adventure","friends"],"medium","movie",8,13,false,true),
+  I("The Jungle Book (live action)","Disney+","movie",["adventure"],["animals","family"],"medium","movie",9,13,false,true),
+  I("The Chronicles of Narnia: The Lion, the Witch and the Wardrobe","Disney+","movie",["adventure"],["quests","family"],"medium","movie",10,13,false,true),
+
+  // -------- Paramount+: shows (more)
+  I("SpongeBob SquarePants","Paramount+","show",["funny"],["friends"],"medium","short",7,13,false,true),
+  I("The Fairly OddParents","Paramount+","show",["funny","adventure"],["magic","school"],"medium","20-30",7,13,false,true),
+  I("Big Nate","Paramount+","show",["funny","chaotic"],["school","friends"],"medium","20-30",8,13,false,true),
+  I("All That","Paramount+","show",["funny"],["sketch","friends"],"medium","20-30",8,13,false,true),
+  I("Kenan & Kel","Paramount+","show",["funny","chaotic"],["friends","school"],"medium","20-30",9,13,false,true),
+  I("Legends of the Hidden Temple","Paramount+","show",["competition","adventure"],["games","challenge"],"medium","20-30",9,13,false,true),
+  I("The Adventures of Kid Danger","Paramount+","show",["funny","adventure"],["heroes","friends"],"medium","20-30",8,13,false,true),
+  I("Teenage Mutant Ninja Turtles (2012)","Paramount+","show",["adventure"],["heroes","team"],"medium","20-30",10,13,false,true),
+  I("The Legend of Korra","Paramount+","show",["clever","adventure"],["friends","quests"],"medium","20-30",12,13,false,true),
+
+  // -------- Paramount+: movies (more)
+  I("The SpongeBob Movie: Sponge Out of Water","Paramount+","movie",["funny","adventure"],["friends"],"medium","movie",7,13,false,true),
+  I("PAW Patrol: The Movie","Paramount+","movie",["adventure","comfort"],["helpers","team"],"low","movie",7,10,true,true, true),
+  I("Rango","Paramount+","movie",["funny","adventure"],["animals","western"],"medium","movie",10,13,false,true),
+
+  // -------- Peacock: shows (more)
+  I("American Ninja Warrior","Peacock","show",["competition","fun"],["sports","challenge"],"medium","40-60",10,13,false,true),
+  I("The Olympic Games (highlights)","Peacock","show",["competition","uplifting"],["sports","teams"],"medium","20-30",8,13,false,true),
+
+  // -------- Peacock: movies (a LOT more)
+  I("Shrek 2","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
+  I("Shrek the Third","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
+  I("Shrek Forever After","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
+  I("Kung Fu Panda 2","Peacock","movie",["adventure","funny"],["training","friends"],"medium","movie",9,13,false,true),
+  I("Kung Fu Panda 3","Peacock","movie",["adventure","funny"],["training","friends"],"medium","movie",8,13,false,true),
+  I("Puss in Boots","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
+  I("How to Train Your Dragon","Peacock","movie",["adventure","uplifting"],["friends","dragons"],"medium","movie",8,13,false,true),
+  I("How to Train Your Dragon 2","Peacock","movie",["adventure","uplifting"],["friends","dragons"],"medium","movie",9,13,false,true),
+  I("The Croods","Peacock","movie",["funny","adventure"],["family"],"medium","movie",7,13,false,true),
+  I("The Croods: A New Age","Peacock","movie",["funny","adventure"],["family"],"medium","movie",7,13,false,true),
+  I("Madagascar: Escape 2 Africa","Peacock","movie",["funny","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
+  I("Madagascar 3","Peacock","movie",["funny","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
+  I("The Secret Life of Pets 2","Peacock","movie",["funny","adventure"],["pets","friends"],"medium","movie",7,13,false,true),
+  I("Trolls World Tour","Peacock","movie",["funny","music"],["friends"],"medium","movie",7,13,false,true),
+  I("Hop","Peacock","movie",["funny","comfort"],["family","friends"],"low","movie",8,13,true,true),
+  I("Spirit: Stallion of the Cimarron","Peacock","movie",["uplifting","adventure"],["animals","freedom"],"medium","movie",8,13,false,true),
+  I("Spirit Untamed","Peacock","movie",["uplifting","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
+  I("The Lorax","Peacock","movie",["funny","uplifting"],["nature","friends"],"low","movie",7,12,true,true),
+  I("Home","Peacock","movie",["funny","adventure"],["friends","space"],"medium","movie",7,13,false,true),
+
+  // ---- Extra “generic safe buckets” (variety without drifting scary)
+  I("Kids Baking Championship (family competition)","Peacock","show",["competition","funny"],["food","games"],"medium","20-30",8,13,false,true),
+  I("Junior Baking Show (family competition)","Netflix","show",["competition","funny"],["food","games"],"medium","20-30",8,13,false,true),
+  I("Family Trivia Night (game show)","Paramount+","show",["competition","fun"],["trivia","games"],"medium","20-30",8,13,false,true),
+  I("Science Challenge Show (kids STEM)","Disney+","show",["curious","fun"],["science","games"],"medium","20-30",8,13,true,true),
+];
   }
 
   // ==========
