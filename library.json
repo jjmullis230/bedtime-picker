@@ -340,7 +340,7 @@
   {"title":"Teenage Mutant Ninja Turtles II: The Secret of the Ooze","platform":"Paramount+","kind":"movie","bedtimeOk":false,"weekendOk":true},
   {"title":"Teenage Mutant Ninja Turtles III","platform":"Paramount+","kind":"movie","bedtimeOk":false,"weekendOk":true},
   {"title":"SpongeBob: Sponge Out of Water","platform":"Paramount+","kind":"movie","bedtimeOk":false,"weekendOk":true},
-,
+  
   {"title":"Akeelah and the Bee","platform":"Peacock","kind":"movie","bedtimeOk":true,"weekendOk":true},
   {"title":"Babe","platform":"Peacock","kind":"movie","bedtimeOk":true,"weekendOk":true},
   {"title":"Babe: Pig in the City","platform":"Peacock","kind":"movie","bedtimeOk":true,"weekendOk":true},
@@ -694,3 +694,4 @@
   {"title": "Rugrats Go Wild", "platform": "Paramount+", "kind": "movie", "bedtimeOk": true, "weekendOk": true},
   {"title": "Hey Arnold! The Movie", "platform": "Paramount+", "kind": "movie", "bedtimeOk": false, "weekendOk": true},
   {"title": "Hey Arnold! The Jungle Movie", "platform": "Paramount+", "kind": "movie", "bedtimeOk": false, "weekendOk": true}
+  ]
