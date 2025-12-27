@@ -430,8 +430,7 @@
 
   {"title":"Henry Danger: The Movie (special)","platform":"Paramount+","kind":"movie","bedtimeOk":false,"weekendOk":true},
   {"title":"The Fairly OddParents: Fairly Odder","platform":"Paramount+","kind":"show","bedtimeOk":true,"weekendOk":true},
-  {"title":"The Thundermans Return (special)","platform":"Paramount+","kind":"movie","bedtimeOk":false,"weekendOk":true}]
-  ,
+  {"title":"The Thundermans Return (special)","platform":"Paramount+","kind":"movie","bedtimeOk":false,"weekendOk":true}],
   {"title": "Lab Rats", "platform": "Disney+", "kind": "show", "bedtimeOk": true, "weekendOk": true},
   {"title": "Lab Rats: Elite Force", "platform": "Disney+", "kind": "show", "bedtimeOk": true, "weekendOk": true},
   {"title": "Pair of Kings", "platform": "Disney+", "kind": "show", "bedtimeOk": true, "weekendOk": true},
