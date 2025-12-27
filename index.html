@@ -12,7 +12,8 @@
     .row { display:flex; gap: 12px; flex-wrap: wrap; }
     .col { flex: 1 1 280px; }
     label { display:block; font-size: 13px; opacity:.9; margin-bottom: 6px; }
-    input[type="text"], select { width:100%; padding: 12px; border-radius: 12px; border:1px solid #2b3a5f; background:#0e1628; color:#eef2ff; }
+    input[type="text"], textarea, select { width:100%; padding: 12px; border-radius: 12px; border:1px solid #2b3a5f; background:#0e1628; color:#eef2ff; }
+    textarea { min-height: 120px; resize: vertical; }
     .btnrow { display:flex; gap:10px; flex-wrap: wrap; margin-top: 10px; }
     button { padding: 12px 14px; border-radius: 14px; border: 1px solid #2b3a5f; background:#0e1628; color:#eef2ff; font-weight: 650; }
     button.primary { background:#1f3bff; border-color:#1f3bff; }
@@ -62,8 +63,11 @@
           <div class="opt"><input id="pPeacock" type="checkbox" checked><span>Peacock</span></div>
         </div>
         <div class="small" style="margin-top:8px;">
-          Catalogs change—this app is an “approved list” picker, not a live catalog scraper.
+          This app uses a big approved list. Streaming catalogs rotate.
         </div>
+
+        <div class="divider"></div>
+        <div class="small" id="libStatus">Library: loading…</div>
       </div>
 
       <div class="col">
@@ -92,7 +96,7 @@
     <div class="btnrow">
       <button id="go" class="primary" type="button">Get 3 picks</button>
       <button id="reroll" type="button">Reroll</button>
-      <button id="openAdd" class="ghost" type="button">Add a title</button>
+      <button id="openAdd" class="ghost" type="button">Add titles (bulk)</button>
       <button id="reset" class="bad" type="button">Reset memory</button>
     </div>
     <div class="small" style="margin-top:8px;">
@@ -101,58 +105,35 @@
   </div>
 
   <div class="card" id="addCard" style="display:none;">
+    <label>Paste titles (one per line)</label>
+    <textarea id="bulkText" placeholder="Format: Title | Platform | show/movie | bedtime(yes/no) | weekend(yes/no)
+Example:
+Is It Cake? | Netflix | show | no | yes
+Fuller House | Netflix | show | yes | yes"></textarea>
+
     <div class="row">
       <div class="col">
-        <label>Title</label>
-        <input id="newTitle" type="text" placeholder="Example: The Suite Life on Deck" />
-      </div>
-      <div class="col">
-        <label>Platform</label>
-        <select id="newPlatform">
+        <label>Default platform if missing</label>
+        <select id="bulkDefaultPlatform">
           <option>Netflix</option>
           <option>Disney+</option>
           <option>Paramount+</option>
           <option>Peacock</option>
         </select>
       </div>
-    </div>
-
-    <div class="row">
       <div class="col">
-        <label>Type</label>
-        <select id="newKind">
+        <label>Default type if missing</label>
+        <select id="bulkDefaultKind">
           <option value="show">Show</option>
           <option value="movie">Movie</option>
         </select>
       </div>
-      <div class="col">
-        <label>Intensity</label>
-        <select id="newIntensity">
-          <option value="low">Low (best for Bedtime)</option>
-          <option value="medium" selected>Medium (more Weekend)</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="col">
-        <label>Tags (optional, comma separated)</label>
-        <input id="newTags" type="text" placeholder="funny, comfort, competition, science, music, sports" />
-        <div class="small" style="margin-top:6px;">
-          Leave blank and the app will auto-tag from the title.
-        </div>
-      </div>
-      <div class="col">
-        <label>Where it fits</label>
-        <div class="opt"><input id="newBedOk" type="checkbox" checked><span>Bedtime OK</span></div>
-        <div class="opt"><input id="newWkndOk" type="checkbox" checked><span>Weekend OK</span></div>
-        <div class="opt"><input id="newPreschool" type="checkbox"><span>Mark as “too babyish” (only shows if typed)</span></div>
-      </div>
     </div>
 
     <div class="btnrow">
-      <button id="saveAdd" class="primary" type="button">Save title</button>
+      <button id="saveBulk" class="primary" type="button">Import titles</button>
       <button id="closeAdd" type="button">Close</button>
+      <button id="clearCustom" class="bad" type="button">Clear my added titles</button>
     </div>
 
     <div id="addMsg" class="small" style="margin-top:10px;"></div>
@@ -175,518 +156,288 @@
 </div>
 
 <script>
-  // ==========
-  // Memory
-  // ==========
-  const STORAGE_KEY = "fairPickerMemory_v4";
+/* ===========
+   Storage
+=========== */
+const STORAGE_KEY = "fairPickerMemory_v5";
+const DEFAULT_MEMORY = {
+  mode: "Bedtime",
+  dislikes: [],
+  likes: [],
+  recentlyWatched: [],
+  lastWinner: null,
+  customLib: []
+};
+function loadMem(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || structuredClone(DEFAULT_MEMORY); } catch { return structuredClone(DEFAULT_MEMORY); } }
+function saveMem(m){ localStorage.setItem(STORAGE_KEY, JSON.stringify(m)); }
+let mem = loadMem();
 
-  const DEFAULT_MEMORY = {
-    mode: "Bedtime",
-    dislikes: [],
-    likes: [],
-    recentlyWatched: [], // {title, ts}
-    lastWinner: null,    // "H" or "K"
-    customLib: []        // array of items (same schema as BASE_LIB)
-  };
+/* ===========
+   Safety
+=========== */
+const SCARY_WORDS = /(horror|scary|haunted|ghost|demon|possession|slasher|terrify|nightmare|creepy|spooky|killer|zombie|vampire|werewolf|exorc|occult)/i;
 
-  function loadMem() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || structuredClone(DEFAULT_MEMORY); }
-    catch { return structuredClone(DEFAULT_MEMORY); }
+/* ===========
+   Library loading
+   - Main library lives in library.json for reliability.
+=========== */
+let BASE_LIB = [];
+async function loadLibrary(){
+  const status = document.getElementById("libStatus");
+  try {
+    const res = await fetch("./library.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("library.json not found (did you create it?)");
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error("library.json must be a JSON array");
+
+    // sanitize
+    BASE_LIB = data
+      .map(normalizeItem)
+      .filter(x => x && x.title && x.platform && (x.kind==="show" || x.kind==="movie"));
+
+    status.textContent = `Library: ${BASE_LIB.length} base titles loaded`;
+  } catch (e) {
+    BASE_LIB = [];
+    status.innerHTML = `<span style="color:#ffb4b4">Library failed to load: ${escapeHtml(e.message)}.</span>`;
   }
-  function saveMem(m){ localStorage.setItem(STORAGE_KEY, JSON.stringify(m)); }
-  let mem = loadMem();
+}
+function normalizeItem(it){
+  if (!it || typeof it !== "object") return null;
+  const title = String(it.title||"").trim();
+  const platform = String(it.platform||"").trim();
+  const kind = (String(it.kind||"show").trim().toLowerCase()==="movie") ? "movie" : "show";
+  const bedtimeOk = !!it.bedtimeOk;
+  const weekendOk = !!it.weekendOk;
+  const intensity = (String(it.intensity||"low").toLowerCase()==="medium") ? "medium" : "low";
+  const episodeLen = String(it.episodeLen || (kind==="movie"?"movie":"20-30"));
+  const preschoolish = !!it.preschoolish;
+  const ageMin = Number.isFinite(it.ageMin) ? it.ageMin : 7;
+  const ageMax = Number.isFinite(it.ageMax) ? it.ageMax : 13;
+  const vibeTags = Array.isArray(it.vibeTags) ? it.vibeTags.map(x=>String(x).toLowerCase()) : [];
+  const themes = Array.isArray(it.themes) ? it.themes.map(x=>String(x).toLowerCase()) : [];
 
-  // ==========
-  // Safety: NEVER scary
-  // ==========
-  const SCARY_WORDS = /(horror|scary|haunted|ghost|demon|possession|slasher|terrify|nightmare|creepy|spooky|killer|zombie|vampire|werewolf|exorc|occult)/i;
-
-  // ==========
-  // Item builder
-  // ==========
-  function I(title, platform, kind, vibeTags, themes, intensity, episodeLen, ageMin, ageMax, bedtimeOk, weekendOk, preschoolish=false){
-    return { title, platform, kind, vibeTags, themes, intensity, episodeLen, ageMin, ageMax, bedtimeOk, weekendOk, preschoolish };
-  }
-
-  // ==========
-  // Base library (large starter set)
-  // ==========
-  // NOTE: “platform” here is the intended platform when added; catalogs rotate.
-  const BASE_LIB = [
-    // ===== Netflix: your anchors + similar
-    I("Is It Cake?","Netflix","show",["funny","competition"],["food","games"],"medium","30-45",8,13,false,true),
-    I("Nailed It!","Netflix","show",["funny","competition"],["food","fails"],"medium","30-45",8,13,false,true),
-    I("Nailed It! Holiday!","Netflix","show",["funny","competition"],["food","fails","holiday"],"medium","30-45",8,13,false,true),
-    I("Floor is Lava","Netflix","show",["funny","competition"],["games","teams"],"medium","30-45",8,13,false,true),
-    I("Brainchild","Netflix","show",["curious","fast"],["science","facts"],"medium","20-30",8,13,true,true),
-    I("Emily's Wonder Lab","Netflix","show",["curious","fun"],["science","experiments"],"medium","20-30",7,13,true,true),
-    I("The Magic School Bus Rides Again","Netflix","show",["curious","adventure"],["science","school"],"low","20-30",7,12,true,true),
-    I("Fuller House","Netflix","show",["funny","comfort"],["family","friends"],"low","20-30",8,13,true,true),
-    I("Alexa & Katie","Netflix","show",["funny","comfort"],["friends","school","family"],"low","20-30",8,13,true,true),
-    I("The Baby-Sitters Club","Netflix","show",["comfort","clever"],["friends","school"],"low","20-30",8,13,true,true),
-    I("Carmen Sandiego","Netflix","show",["clever","adventure"],["mystery","travel"],"medium","20-30",8,13,false,true),
-    I("The InBESTigators","Netflix","show",["funny","clever"],["mystery","school"],"low","20-30",8,13,true,true),
-    I("The Who Was? Show","Netflix","show",["funny","curious"],["history","facts"],"low","20-30",8,13,true,true),
-    I("Oddballs","Netflix","show",["funny"],["school","friends"],"medium","20-30",8,13,false,true),
-    I("Hilda","Netflix","show",["comfort","adventure"],["friends","mystery"],"low","20-30",8,13,true,true),
-    I("Team Zenko Go","Netflix","show",["comfort"],["helpers","friends"],"low","20-30",7,11,true,true),
-    I("Green Eggs and Ham","Netflix","show",["funny","adventure"],["friends","travel"],"medium","20-30",7,13,false,true),
-    I("Kid Cosmic","Netflix","show",["adventure","funny"],["heroes","friends"],"medium","20-30",8,13,false,true),
-    I("My Dad the Bounty Hunter","Netflix","show",["funny","adventure"],["family","space"],"medium","20-30",8,13,false,true),
-    I("Dogs in Space","Netflix","show",["funny","adventure"],["space","friends"],"medium","20-30",8,13,false,true),
-    I("Project Mc²","Netflix","show",["curious","fun"],["science","friends"],"low","20-30",8,13,true,true),
-    I("Pokémon Journeys","Netflix","show",["adventure"],["friends","quests"],"medium","20-30",7,13,false,true),
-    I("Pokémon Master Journeys","Netflix","show",["adventure"],["friends","quests"],"medium","20-30",7,13,false,true),
-    I("Pokémon Ultimate Journeys","Netflix","show",["adventure"],["friends","quests"],"medium","20-30",7,13,false,true),
-    I("LEGO Ninjago","Netflix","show",["adventure"],["heroes","team"],"medium","20-30",8,13,false,true),
-    I("Dragons: Race to the Edge","Netflix","show",["adventure","funny"],["dragons","friends"],"medium","20-30",8,13,false,true),
-
-    // Netflix movies
-    I("Yes Day","Netflix","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
-    I("The Mitchells vs. the Machines","Netflix","movie",["funny","adventure"],["family","tech"],"medium","movie",8,13,false,true),
-    I("We Can Be Heroes","Netflix","movie",["adventure","funny"],["heroes","family"],"medium","movie",7,13,false,true),
-    I("The Willoughbys","Netflix","movie",["funny","adventure"],["family","friends"],"medium","movie",8,13,false,true),
-    I("The Sea Beast","Netflix","movie",["adventure","uplifting"],["friends","sea"],"medium","movie",8,13,false,true),
-    I("Vivo","Netflix","movie",["funny","music"],["friends","family"],"medium","movie",7,13,false,true),
-    I("Enola Holmes","Netflix","movie",["clever","adventure"],["mystery","family"],"medium","movie",10,13,false,true),
-    I("Enola Holmes 2","Netflix","movie",["clever","adventure"],["mystery","family"],"medium","movie",10,13,false,true),
-    I("A Shaun the Sheep Movie: Farmageddon","Netflix","movie",["funny","adventure"],["animals","friends"],"low","movie",7,13,true,true),
-
-    // ===== Disney+: Bunk’d lane + classics
-    I("Bunk’d","Disney+","show",["funny","chaotic"],["camp","friends"],"medium","20-30",7,13,false,true),
-    I("Jessie","Disney+","show",["funny","comfort"],["family","friends"],"low","20-30",8,13,true,true),
-    I("Liv and Maddie","Disney+","show",["funny","comfort"],["family","school"],"low","20-30",8,13,true,true),
-    I("Girl Meets World","Disney+","show",["funny","comfort"],["school","friends","family"],"low","20-30",8,13,true,true),
-    I("Austin & Ally","Disney+","show",["funny","music"],["friends","school"],"medium","20-30",8,13,false,true),
-    I("Good Luck Charlie","Disney+","show",["funny","comfort"],["family","school"],"low","20-30",8,13,true,true),
-    I("Hannah Montana","Disney+","show",["funny","music"],["school","friends"],"medium","20-30",8,13,false,true),
-    I("That's So Raven","Disney+","show",["funny"],["school","family"],"medium","20-30",8,13,false,true),
-    I("Raven's Home","Disney+","show",["funny","comfort"],["family","school"],"low","20-30",8,13,true,true),
-    I("Andi Mack","Disney+","show",["comfort","clever"],["school","friends","family"],"low","20-30",9,13,true,true),
-    I("Stuck in the Middle","Disney+","show",["funny","comfort"],["family","school"],"low","20-30",8,13,true,true),
-    I("Dog with a Blog","Disney+","show",["funny"],["family","pets"],"low","20-30",8,13,true,true),
-    I("Phineas and Ferb","Disney+","show",["funny","creative"],["inventions","music"],"medium","20-30",7,13,true,true),
-    I("DuckTales","Disney+","show",["adventure","funny"],["family","treasure"],"medium","20-30",8,13,false,true),
-    I("Big City Greens","Disney+","show",["funny","chaotic"],["family","misadventures"],"medium","20-30",8,13,false,true),
-    I("Brain Games","Disney+","show",["curious","clever"],["puzzles","brain"],"low","20-30",8,13,true,true),
-    I("Marvel's Hero Project","Disney+","show",["uplifting","inspiring"],["real people","helping"],"low","20-30",7,13,true,true),
-    I("Pixar in Real Life","Disney+","show",["fun","light"],["kind","pranks"],"low","short",8,13,true,true),
-
-    // Disney+ movies
-    I("The Parent Trap","Disney+","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
-    I("Cool Runnings","Disney+","movie",["funny","uplifting"],["sports","team"],"low","movie",8,13,true,true),
-    I("Ratatouille","Disney+","movie",["funny","comfort"],["food","dreams"],"low","movie",7,13,true,true),
-    I("Encanto","Disney+","movie",["funny","uplifting"],["family","music"],"medium","movie",7,13,false,true),
-    I("Moana","Disney+","movie",["adventure","uplifting"],["family","ocean"],"medium","movie",7,13,false,true),
-    I("Zootopia","Disney+","movie",["clever","adventure"],["mystery","friends"],"medium","movie",8,13,false,true),
-    I("Inside Out","Disney+","movie",["clever","comfort"],["feelings","family"],"medium","movie",8,13,false,true),
-    I("The Incredibles","Disney+","movie",["adventure","funny"],["family","heroes"],"medium","movie",8,13,false,true),
-    I("The Princess Diaries","Disney+","movie",["funny","comfort"],["school","family"],"low","movie",9,13,true,true),
-    I("Freaky Friday","Disney+","movie",["funny","comfort"],["family","school"],"low","movie",9,13,true,true),
-    I("Holes","Disney+","movie",["adventure","clever"],["mystery","friends"],"medium","movie",9,13,false,true),
-    I("Remember the Titans","Disney+","movie",["uplifting"],["sports","team"],"medium","movie",10,13,false,true),
-    I("The Sandlot","Disney+","movie",["comfort","funny"],["sports","friends"],"low","movie",8,13,true,true),
-
-    // ===== Paramount+: Nickelodeon lane + family movies
-    I("iCarly","Paramount+","show",["funny","chaotic"],["friends","school"],"medium","20-30",8,13,false,true),
-    I("Victorious","Paramount+","show",["funny","music"],["school","friends"],"medium","20-30",8,13,false,true),
-    I("Sam & Cat","Paramount+","show",["funny","chaotic"],["friends","school"],"medium","20-30",9,13,false,true),
-    I("Drake & Josh","Paramount+","show",["funny","chaotic"],["family","school"],"medium","20-30",9,13,false,true),
-    I("Zoey 101","Paramount+","show",["funny","comfort"],["school","friends"],"low","20-30",9,13,true,true),
-    I("Big Time Rush","Paramount+","show",["funny","music"],["friends","band"],"medium","20-30",9,13,false,true),
-    I("The Thundermans","Paramount+","show",["funny","adventure"],["family","powers"],"medium","20-30",7,13,false,true),
-    I("Henry Danger","Paramount+","show",["funny","adventure"],["heroes","friends"],"medium","20-30",8,13,false,true),
-    I("Danger Force","Paramount+","show",["funny","adventure"],["heroes","friends"],"medium","20-30",8,13,false,true),
-    I("Game Shakers","Paramount+","show",["funny","tech"],["games","friends"],"medium","20-30",8,13,false,true),
-    I("The Loud House","Paramount+","show",["funny","comfort"],["family","siblings"],"medium","20-30",7,13,false,true),
-    I("The Casagrandes","Paramount+","show",["funny","comfort"],["family","friends"],"medium","20-30",7,13,false,true),
-    I("Double Dare","Paramount+","show",["competition","funny"],["games","challenge"],"medium","20-30",8,13,false,true),
-    I("Are You Smarter Than a 5th Grader?","Paramount+","show",["competition","fun"],["trivia","school"],"medium","20-30",8,13,false,true),
-    I("Avatar: The Last Airbender","Paramount+","show",["clever","adventure"],["friends","quests"],"medium","20-30",10,13,false,true),
-
-    // Paramount+ movies
-    I("Sonic the Hedgehog","Paramount+","movie",["funny","adventure"],["friends","heroes"],"medium","movie",8,13,false,true),
-    I("Sonic the Hedgehog 2","Paramount+","movie",["funny","adventure"],["friends","heroes"],"medium","movie",8,13,false,true),
-    I("Dora and the Lost City of Gold","Paramount+","movie",["funny","adventure"],["friends","travel"],"medium","movie",8,13,false,true),
-
-    // ===== Peacock: competition + Illumination/DreamWorks style family movies
-    I("American Ninja Warrior Junior","Peacock","show",["competition","fun"],["sports","challenge"],"medium","20-30",8,13,false,true),
-    I("LEGO Masters","Peacock","show",["competition","fun"],["builds","challenge"],"medium","40-60",9,13,false,true),
-
-    I("Despicable Me","Peacock","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
-    I("Minions","Peacock","movie",["funny"],["family"],"low","movie",7,12,true,true),
-    I("Shrek","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
-    I("Kung Fu Panda","Peacock","movie",["funny","adventure"],["training","friends"],"medium","movie",8,13,false,true),
-    I("Sing","Peacock","movie",["funny","music"],["talent","friends"],"medium","movie",7,13,false,true),
-    I("Sing 2","Peacock","movie",["funny","music"],["talent","friends"],"medium","movie",7,13,false,true),
-    I("The Bad Guys","Peacock","movie",["funny","adventure"],["friends","heist"],"medium","movie",8,13,false,true),
-    I("Madagascar","Peacock","movie",["funny","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
-    I("Megamind","Peacock","movie",["funny","adventure"],["heroes","friends"],"medium","movie",9,13,false,true),
-    I("The Secret Life of Pets","Peacock","movie",["funny","adventure"],["pets","friends"],"medium","movie",7,13,false,true),
-    I("Trolls","Peacock","movie",["funny","music"],["friends"],"medium","movie",7,13,false,true),
-    I("Over the Hedge","Peacock","movie",["funny","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
-    I("Bee Movie","Peacock","movie",["funny","comfort"],["friends"],"low","movie",8,13,true,true),
-
-    // ===== “Typed by kid” younger picks (suppressed unless explicitly typed)
-    I("Bluey","Disney+","show",["comfort","kind"],["family","life lessons"],"low","short",7,13,true,false,true),
-    I("T.O.T.S.","Disney+","show",["kind","comfort"],["helpers","animals"],"low","short",7,10,true,true,true),
-  ];
-  function getLib(){
+  return { title, platform, kind, bedtimeOk, weekendOk, intensity, episodeLen, preschoolish, ageMin, ageMax, vibeTags, themes };
+}
+function getLib(){
   const custom = Array.isArray(mem.customLib) ? mem.customLib : [];
-  return BASE_LIB.concat(BACKFILL_LIB).concat(custom);
-};// ============================
-// BACKFILL LIB (200+ more picks)
-// ============================
-const BACKFILL_LIB = [
-  // -------- Netflix: shows
-  I("The Worst Witch","Netflix","show",["comfort","adventure"],["school","friends"],"low","20-30",8,13,true,true),
-  I("The Healing Powers of Dude","Netflix","show",["comfort","funny"],["school","family","pets"],"low","20-30",8,13,true,true),
-  I("Waffles + Mochi","Netflix","show",["curious","fun"],["food","learning"],"low","20-30",7,12,true,true),
-  I("Waffles + Mochi's Restaurant","Netflix","show",["curious","fun"],["food","learning"],"low","20-30",7,13,true,true),
-  I("The Letter for the King","Netflix","show",["adventure","clever"],["quests","friends"],"medium","20-30",10,13,false,true),
-  I("Raising Dion","Netflix","show",["comfort","adventure"],["family","powers"],"medium","20-30",10,13,false,true),
-  I("Lost in Space","Netflix","show",["adventure","clever"],["space","family"],"medium","40-60",10,13,false,true),
-  I("A Tale Dark & Grimm","Netflix","show",["clever","adventure"],["fairy tales","mystery"],"medium","20-30",10,13,false,true),
-  I("The Dragon Prince","Netflix","show",["adventure","clever"],["quests","friends"],"medium","20-30",10,13,false,true),
-  I("Kipo and the Age of Wonderbeasts","Netflix","show",["adventure","uplifting"],["friends","quests"],"medium","20-30",9,13,false,true),
-  I("Jurassic World Camp Cretaceous","Netflix","show",["adventure"],["dinosaurs","friends"],"medium","20-30",10,13,false,true),
-  I("The Deep","Netflix","show",["adventure"],["ocean","family"],"low","20-30",8,13,true,true),
-  I("Horsin' Around (family-friendly horse series)","Netflix","show",["comfort"],["animals","family"],"low","20-30",8,13,true,true),
-  I("The Adventures of Puss in Boots","Netflix","show",["funny","adventure"],["friends","quests"],"medium","20-30",8,13,false,true),
-  I("Trollhunters: Tales of Arcadia","Netflix","show",["adventure"],["friends","quests"],"medium","20-30",11,13,false,true),
-  I("3Below: Tales of Arcadia","Netflix","show",["adventure","funny"],["space","friends"],"medium","20-30",10,13,false,true),
-  I("Wizards: Tales of Arcadia","Netflix","show",["adventure"],["magic","friends"],"medium","20-30",11,13,false,true),
-  I("Gortimer Gibbon's Life on Normal Street","Netflix","show",["comfort","clever"],["school","friends"],"low","20-30",8,13,true,true),
-  I("Malibu Rescue","Netflix","show",["funny","adventure"],["friends","beach"],"medium","20-30",9,13,false,true),
-  I("The Big Show Show","Netflix","show",["funny","comfort"],["family"],"low","20-30",8,13,true,true),
-  I("DinoTrux","Netflix","show",["adventure","funny"],["machines","friends"],"medium","20-30",7,11,false,true, true),
-  I("Dragons: Rescue Riders","Netflix","show",["adventure"],["dragons","friends"],"low","20-30",7,10,true,true, true),
+  return BASE_LIB.concat(custom);
+}
 
-  // -------- Netflix: movies
-  I("The Angry Birds Movie 2","Netflix","movie",["funny","adventure"],["friends"],"medium","movie",7,13,false,true),
-  I("The Sleepover","Netflix","movie",["funny","adventure"],["family","mystery"],"medium","movie",9,13,false,true),
-  I("The Monkey King","Netflix","movie",["adventure","funny"],["quests","friends"],"medium","movie",9,13,false,true),
-  I("Nimona","Netflix","movie",["adventure","clever"],["friends","heroes"],"medium","movie",11,13,false,true),
-  I("Paddington","Netflix","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
-  I("Paddington 2","Netflix","movie",["funny","comfort"],["family"],"low","movie",7,13,true,true),
+/* ===========
+   Tagging
+=========== */
+function tagsFromText(t){
+  t = (t||"").toLowerCase();
+  const tags = new Set();
+  const add = (...xs)=>xs.forEach(x=>tags.add(x));
 
-  // -------- Disney+: shows
-  I("The Suite Life of Zack & Cody","Disney+","show",["funny","chaotic"],["siblings","hotel"],"medium","20-30",8,13,false,true),
-  I("The Suite Life on Deck","Disney+","show",["funny","chaotic"],["siblings","travel"],"medium","20-30",8,13,false,true),
-  I("Wizards of Waverly Place","Disney+","show",["funny","adventure"],["family","magic"],"medium","20-30",9,13,false,true),
-  I("K.C. Undercover","Disney+","show",["funny","adventure"],["spy","family"],"medium","20-30",8,13,false,true),
-  I("Kim Possible","Disney+","show",["funny","adventure"],["heroes","school"],"medium","20-30",8,13,false,true),
-  I("Star vs. the Forces of Evil","Disney+","show",["funny","adventure"],["friends","magic"],"medium","20-30",9,13,false,true),
-  I("Amphibia","Disney+","show",["adventure","funny"],["friends","quests"],"medium","20-30",9,13,false,true),
-  I("The Owl House","Disney+","show",["adventure","clever"],["friends","magic"],"medium","20-30",10,13,false,true),
-  I("Big Hero 6: The Series","Disney+","show",["adventure","funny"],["heroes","friends"],"medium","20-30",8,13,false,true),
-  I("Miraculous: Tales of Ladybug & Cat Noir","Disney+","show",["adventure"],["heroes","school"],"medium","20-30",8,13,false,true),
-  I("Phineas and Ferb: Candace Against the Universe","Disney+","movie",["funny","adventure"],["family","music"],"medium","movie",7,13,false,true),
+  if (/(science|experiment|lab|facts|learn|brain|stem)/.test(t)) add("curious","science");
+  if (/(animal|pet|zoo|wild|creature|dragon|dino)/.test(t)) add("animals","adventure");
+  if (/(funny|comedy|laugh|lol)/.test(t)) add("funny");
+  if (/(helper|help|kind|friend|team|family|home|house)/.test(t)) add("kind","comfort");
+  if (/(mystery|detective|clue)/.test(t)) add("mystery","clever");
+  if (/(cake|bake|nailed|dessert|cook|food)/.test(t)) add("food","competition","funny");
+  if (/(game|challenge|competition|contest|ninja|warrior)/.test(t)) add("competition","sports");
+  if (/(camp|bunk|sitcom|school)/.test(t)) add("comfort","funny");
+  if (/(music|band|sing|dance)/.test(t)) add("music");
+  if (/(sports|soccer|basketball|football|baseball)/.test(t)) add("sports");
 
-  // -------- Disney+: movies (more)
-  I("Frozen","Disney+","movie",["comfort","music"],["family"],"low","movie",7,13,true,true),
-  I("Frozen II","Disney+","movie",["adventure","music"],["family"],"medium","movie",7,13,false,true),
-  I("Cars","Disney+","movie",["funny","comfort"],["sports","friends"],"low","movie",7,13,true,true),
-  I("Cars 2","Disney+","movie",["adventure","funny"],["friends","travel"],"medium","movie",7,13,false,true),
-  I("Cars 3","Disney+","movie",["uplifting"],["sports","friends"],"low","movie",7,13,true,true),
-  I("Toy Story","Disney+","movie",["comfort","funny"],["friends"],"low","movie",7,13,true,true),
-  I("Toy Story 2","Disney+","movie",["comfort","funny"],["friends"],"low","movie",7,13,true,true),
-  I("Toy Story 3","Disney+","movie",["comfort","uplifting"],["friends"],"medium","movie",8,13,false,true),
-  I("Toy Story 4","Disney+","movie",["comfort","uplifting"],["friends"],"low","movie",7,13,true,true),
-  I("Monsters, Inc.","Disney+","movie",["funny","comfort"],["friends"],"low","movie",7,13,true,true),
-  I("Monsters University","Disney+","movie",["funny","comfort"],["school","friends"],"low","movie",7,13,true,true),
-  I("Coco","Disney+","movie",["uplifting","music"],["family"],"medium","movie",8,13,false,true),
-  I("Up","Disney+","movie",["uplifting"],["adventure","friends"],"medium","movie",8,13,false,true),
-  I("The Jungle Book (live action)","Disney+","movie",["adventure"],["animals","family"],"medium","movie",9,13,false,true),
-  I("The Chronicles of Narnia: The Lion, the Witch and the Wardrobe","Disney+","movie",["adventure"],["quests","family"],"medium","movie",10,13,false,true),
+  if (/(sleep|bedtime|calm|cozy|relax)/.test(t)) add("calm");
+  if (/(weekend|exciting|hype)/.test(t)) add("energetic");
 
-  // -------- Paramount+: shows (more)
-  I("SpongeBob SquarePants","Paramount+","show",["funny"],["friends"],"medium","short",7,13,false,true),
-  I("The Fairly OddParents","Paramount+","show",["funny","adventure"],["magic","school"],"medium","20-30",7,13,false,true),
-  I("Big Nate","Paramount+","show",["funny","chaotic"],["school","friends"],"medium","20-30",8,13,false,true),
-  I("All That","Paramount+","show",["funny"],["sketch","friends"],"medium","20-30",8,13,false,true),
-  I("Kenan & Kel","Paramount+","show",["funny","chaotic"],["friends","school"],"medium","20-30",9,13,false,true),
-  I("Legends of the Hidden Temple","Paramount+","show",["competition","adventure"],["games","challenge"],"medium","20-30",9,13,false,true),
-  I("The Adventures of Kid Danger","Paramount+","show",["funny","adventure"],["heroes","friends"],"medium","20-30",8,13,false,true),
-  I("Teenage Mutant Ninja Turtles (2012)","Paramount+","show",["adventure"],["heroes","team"],"medium","20-30",10,13,false,true),
-  I("The Legend of Korra","Paramount+","show",["clever","adventure"],["friends","quests"],"medium","20-30",12,13,false,true),
+  return [...tags];
+}
+function autoTagsForTitle(title){
+  const base = tagsFromText(title);
+  return base.length ? base : ["comfort"];
+}
 
-  // -------- Paramount+: movies (more)
-  I("The SpongeBob Movie: Sponge Out of Water","Paramount+","movie",["funny","adventure"],["friends"],"medium","movie",7,13,false,true),
-  I("PAW Patrol: The Movie","Paramount+","movie",["adventure","comfort"],["helpers","team"],"low","movie",7,10,true,true, true),
-  I("Rango","Paramount+","movie",["funny","adventure"],["animals","western"],"medium","movie",10,13,false,true),
+/* ===========
+   UI helpers
+=========== */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 
-  // -------- Peacock: shows (more)
-  I("American Ninja Warrior","Peacock","show",["competition","fun"],["sports","challenge"],"medium","40-60",10,13,false,true),
-  I("The Olympic Games (highlights)","Peacock","show",["competition","uplifting"],["sports","teams"],"medium","20-30",8,13,false,true),
+/* ===========
+   Platform / mode checks
+=========== */
+function getEnabledPlatforms(){
+  const enabled = new Set();
+  if (document.getElementById("pNetflix").checked) enabled.add("Netflix");
+  if (document.getElementById("pDisney").checked) enabled.add("Disney+");
+  if (document.getElementById("pParamount").checked) enabled.add("Paramount+");
+  if (document.getElementById("pPeacock").checked) enabled.add("Peacock");
+  return enabled;
+}
+function modeOk(item, mode){
+  return mode === "Bedtime" ? item.bedtimeOk : item.weekendOk;
+}
+function kindOk(item){
+  const moviesOk = document.getElementById("fMoviesOK").checked;
+  const showsOk  = document.getElementById("fShowsOK").checked;
+  return (item.kind === "movie" && moviesOk) || (item.kind === "show" && showsOk);
+}
+function isExplicitlyTyped(title){
+  const a = (document.getElementById("pickA").value || "").toLowerCase();
+  const b = (document.getElementById("pickB").value || "").toLowerCase();
+  const t = (title || "").toLowerCase();
+  const loose = t.replace(/[^\w]+/g,"");
+  const a2 = a.replace(/[^\w]+/g,"");
+  const b2 = b.replace(/[^\w]+/g,"");
+  return a.includes(t) || b.includes(t) || a2.includes(loose) || b2.includes(loose);
+}
+function violatesFilters(item){
+  const enabled = getEnabledPlatforms();
+  if (!enabled.has(item.platform)) return true;
 
-  // -------- Peacock: movies (a LOT more)
-  I("Shrek 2","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
-  I("Shrek the Third","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
-  I("Shrek Forever After","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
-  I("Kung Fu Panda 2","Peacock","movie",["adventure","funny"],["training","friends"],"medium","movie",9,13,false,true),
-  I("Kung Fu Panda 3","Peacock","movie",["adventure","funny"],["training","friends"],"medium","movie",8,13,false,true),
-  I("Puss in Boots","Peacock","movie",["funny","adventure"],["friends"],"medium","movie",8,13,false,true),
-  I("How to Train Your Dragon","Peacock","movie",["adventure","uplifting"],["friends","dragons"],"medium","movie",8,13,false,true),
-  I("How to Train Your Dragon 2","Peacock","movie",["adventure","uplifting"],["friends","dragons"],"medium","movie",9,13,false,true),
-  I("The Croods","Peacock","movie",["funny","adventure"],["family"],"medium","movie",7,13,false,true),
-  I("The Croods: A New Age","Peacock","movie",["funny","adventure"],["family"],"medium","movie",7,13,false,true),
-  I("Madagascar: Escape 2 Africa","Peacock","movie",["funny","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
-  I("Madagascar 3","Peacock","movie",["funny","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
-  I("The Secret Life of Pets 2","Peacock","movie",["funny","adventure"],["pets","friends"],"medium","movie",7,13,false,true),
-  I("Trolls World Tour","Peacock","movie",["funny","music"],["friends"],"medium","movie",7,13,false,true),
-  I("Hop","Peacock","movie",["funny","comfort"],["family","friends"],"low","movie",8,13,true,true),
-  I("Spirit: Stallion of the Cimarron","Peacock","movie",["uplifting","adventure"],["animals","freedom"],"medium","movie",8,13,false,true),
-  I("Spirit Untamed","Peacock","movie",["uplifting","adventure"],["animals","friends"],"medium","movie",7,13,false,true),
-  I("The Lorax","Peacock","movie",["funny","uplifting"],["nature","friends"],"low","movie",7,12,true,true),
-  I("Home","Peacock","movie",["funny","adventure"],["friends","space"],"medium","movie",7,13,false,true),
+  // age target
+  if (item.ageMax < 7 || item.ageMin > 13) return true;
 
-  // ---- Extra “generic safe buckets” (variety without drifting scary)
-  I("Kids Baking Championship (family competition)","Peacock","show",["competition","funny"],["food","games"],"medium","20-30",8,13,false,true),
-  I("Junior Baking Show (family competition)","Netflix","show",["competition","funny"],["food","games"],"medium","20-30",8,13,false,true),
-  I("Family Trivia Night (game show)","Paramount+","show",["competition","fun"],["trivia","games"],"medium","20-30",8,13,false,true),
-  I("Science Challenge Show (kids STEM)","Disney+","show",["curious","fun"],["science","games"],"medium","20-30",8,13,true,true),
-];
+  if (!kindOk(item)) return true;
+  if (mem.dislikes.includes(item.title)) return true;
+
+  // typed-only suppression for babyish
+  if (item.preschoolish && !isExplicitlyTyped(item.title)) return true;
+
+  // avoid repeats last 7 days
+  const weekMs = 7*24*60*60*1000;
+  if (mem.recentlyWatched.some(x => x.title === item.title && (Date.now()-x.ts) < weekMs)) return true;
+
+  // quick filters
+  const shortOnly = document.getElementById("fShort").checked;
+  const noLoud = document.getElementById("fNoLoud").checked;
+  const noSad = document.getElementById("fNoSad").checked;
+  const noFight = document.getElementById("fNoFight").checked;
+
+  if (shortOnly && !["short","10-20","20-30","movie"].includes(item.episodeLen)) return true;
+  if (noLoud && item.intensity === "medium") return true;
+  if (noSad && /sad/.test((item.vibeTags||[]).join(" "))) return true;
+  if (noFight && /fight|battle|violence/.test((item.themes||[]).join(" "))) return true;
+
+  return false;
+}
+
+/* ===========
+   Scoring
+=========== */
+function scoreItem(item, tagsA, tagsB, mode){
+  const overlap = new Set([...tagsA].filter(x => tagsB.includes(x)));
+  let score = overlap.size * 3;
+
+  const allTags = new Set([...tagsA, ...tagsB]);
+  for (const t of allTags) {
+    if ((item.vibeTags||[]).includes(t) || (item.themes||[]).includes(t)) score += 2;
   }
 
-  // ==========
-  // Tag extraction
-  // ==========
-  function tagsFromText(t){
-    t = (t||"").toLowerCase();
-    const tags = new Set();
-    const add = (...xs)=>xs.forEach(x=>tags.add(x));
-
-    if (/(science|experiment|lab|facts|learn|brain|stem)/.test(t)) add("curious","science");
-    if (/(animal|pet|zoo|wild|creature|dragon)/.test(t)) add("animals","adventure");
-    if (/(funny|comedy|laugh|lol)/.test(t)) add("funny");
-    if (/(helper|help|kind|friend|team|family|home|house)/.test(t)) add("kind","comfort");
-    if (/(mystery|detective|clue|enola)/.test(t)) add("mystery","clever");
-    if (/(cake|bake|nailed|dessert|cook|food)/.test(t)) add("food","competition","funny");
-    if (/(game|challenge|competition|contest|ninja|warrior)/.test(t)) add("competition","sports");
-    if (/(camp|bunk|sitcom|fuller|school)/.test(t)) add("comfort","funny");
-    if (/(music|band|sing|dance)/.test(t)) add("music");
-    if (/(sports|soccer|basketball|football|baseball)/.test(t)) add("sports");
-
-    if (/(sleep|bedtime|calm|cozy|relax)/.test(t)) add("calm");
-    if (/(weekend|exciting|hype)/.test(t)) add("energetic");
-
-    return [...tags];
+  if (mode === "Bedtime") {
+    if (item.intensity === "low") score += 6;
+    if (item.intensity === "medium") score -= 3;
+    if (["short","10-20","20-30"].includes(item.episodeLen)) score += 1;
+    if (item.kind === "movie") score -= 1;
+  } else {
+    if (item.intensity === "medium") score += 2;
+    if (item.kind === "movie") score += 1;
   }
 
-  function autoTagsForTitle(title){
-    const base = tagsFromText(title);
-    return base.length ? base : ["comfort"];
+  // fairness nudge
+  if (mem.lastWinner === "H") {
+    const kFit = tagsB.filter(t => (item.vibeTags||[]).includes(t) || (item.themes||[]).includes(t)).length;
+    score += kFit;
+  }
+  if (mem.lastWinner === "K") {
+    const hFit = tagsA.filter(t => (item.vibeTags||[]).includes(t) || (item.themes||[]).includes(t)).length;
+    score += hFit;
   }
 
-  // ==========
-  // Filters / scoring
-  // ==========
-  function getEnabledPlatforms(){
-    const enabled = new Set();
-    if (document.getElementById("pNetflix").checked) enabled.add("Netflix");
-    if (document.getElementById("pDisney").checked) enabled.add("Disney+");
-    if (document.getElementById("pParamount").checked) enabled.add("Paramount+");
-    if (document.getElementById("pPeacock").checked) enabled.add("Peacock");
-    return enabled;
-  }
+  return score;
+}
 
-  function modeOk(item, mode){
-    return mode === "Bedtime" ? item.bedtimeOk : item.weekendOk;
-  }
+/* ===========
+   Recommend
+=========== */
+function pick3(){
+  const pickA = document.getElementById("pickA").value.trim();
+  const pickB = document.getElementById("pickB").value.trim();
+  const mode = mem.mode;
 
-  function kindOk(item){
-    const moviesOk = document.getElementById("fMoviesOK").checked;
-    const showsOk  = document.getElementById("fShowsOK").checked;
-    return (item.kind === "movie" && moviesOk) || (item.kind === "show" && showsOk);
-  }
+  const scaryRequested = SCARY_WORDS.test(pickA) || SCARY_WORDS.test(pickB);
 
-  function isExplicitlyTyped(title){
-    const a = (document.getElementById("pickA").value || "").toLowerCase();
-    const b = (document.getElementById("pickB").value || "").toLowerCase();
-    const t = (title || "").toLowerCase();
-    const loose = t.replace(/[^\w]+/g,"");
-    const a2 = a.replace(/[^\w]+/g,"");
-    const b2 = b.replace(/[^\w]+/g,"");
-    return a.includes(t) || b.includes(t) || a2.includes(loose) || b2.includes(loose);
-  }
+  let tagsA = tagsFromText(pickA);
+  let tagsB = tagsFromText(pickB);
 
-  function violatesFilters(item){
+  if (tagsA.length === 0) tagsA = [mode==="Bedtime" ? "comfort" : "funny"];
+  if (tagsB.length === 0) tagsB = [mode==="Bedtime" ? "comfort" : "funny"];
+
+  if (scaryRequested) { tagsA = ["comfort","funny"]; tagsB = ["comfort","curious"]; }
+
+  const lib = getLib();
+  const candidates = [];
+  for (const item of lib) {
+    if (!modeOk(item, mode)) continue;
+    if (violatesFilters(item)) continue;
+    const sc = scoreItem(item, tagsA, tagsB, mode);
+    candidates.push({ item, sc });
+  }
+  candidates.sort((a,b)=>b.sc - a.sc);
+  let top = candidates.slice(0,3);
+
+  // fallback: ignore repeat rule only
+  if (top.length < 3) {
     const enabled = getEnabledPlatforms();
-    if (!enabled.has(item.platform)) return true;
-
-    // age target: 7–13
-    if (item.ageMax < 7 || item.ageMin > 13) return true;
-
-    if (!kindOk(item)) return true;
-    if (mem.dislikes.includes(item.title)) return true;
-
-    // “too babyish” suppression unless typed
-    if (item.preschoolish && !isExplicitlyTyped(item.title)) return true;
-
-    // avoid repeats in last 7 days
-    const weekMs = 7*24*60*60*1000;
-    if (mem.recentlyWatched.some(x => x.title === item.title && (Date.now()-x.ts) < weekMs)) return true;
-
-    // quick filters
-    const shortOnly = document.getElementById("fShort").checked;
-    const noLoud = document.getElementById("fNoLoud").checked;
-    const noSad = document.getElementById("fNoSad").checked;
-    const noFight = document.getElementById("fNoFight").checked;
-
-    if (shortOnly && !["short","10-20","20-30"].includes(item.episodeLen)) return true;
-    if (noLoud && item.intensity === "medium") return true;
-    if (noSad && /sad/.test(item.vibeTags.join(" "))) return true;
-    if (noFight && /fight|battle|violence/.test(item.themes.join(" "))) return true;
-
-    return false;
-  }
-
-  function scoreItem(item, tagsA, tagsB, mode){
-    const overlap = new Set([...tagsA].filter(x => tagsB.includes(x)));
-    let score = overlap.size * 3;
-
-    const allTags = new Set([...tagsA, ...tagsB]);
-    for (const t of allTags) {
-      if (item.vibeTags.includes(t) || item.themes.includes(t)) score += 2;
-    }
-
-    if (mode === "Bedtime") {
-      if (item.intensity === "low") score += 6;
-      if (item.intensity === "medium") score -= 3;
-      if (["short","10-20","20-30"].includes(item.episodeLen)) score += 1;
-      if (item.kind === "movie") score -= 1;
-    } else {
-      if (item.intensity === "medium") score += 2;
-      if (item.kind === "movie") score += 1;
-    }
-
-    // fairness nudge
-    if (mem.lastWinner === "H") {
-      const kFit = tagsB.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
-      score += kFit;
-    }
-    if (mem.lastWinner === "K") {
-      const hFit = tagsA.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
-      score += hFit;
-    }
-
-    return { score, overlap: [...overlap] };
-  }
-
-  // ==========
-  // Main recommend
-  // ==========
-  function pick3(){
-    const pickA = document.getElementById("pickA").value.trim();
-    const pickB = document.getElementById("pickB").value.trim();
-    const mode = mem.mode;
-
-    const scaryRequested = SCARY_WORDS.test(pickA) || SCARY_WORDS.test(pickB);
-
-    let tagsA = tagsFromText(pickA);
-    let tagsB = tagsFromText(pickB);
-
-    if (tagsA.length === 0) tagsA = [mode==="Bedtime" ? "comfort" : "funny"];
-    if (tagsB.length === 0) tagsB = [mode==="Bedtime" ? "comfort" : "funny"];
-
-    if (scaryRequested) {
-      tagsA = ["comfort","funny"];
-      tagsB = ["comfort","curious"];
-    }
-
-    const lib = getLib();
-
-    const candidates = [];
+    const relaxed = [];
     for (const item of lib) {
+      if (!enabled.has(item.platform)) continue;
       if (!modeOk(item, mode)) continue;
-      if (violatesFilters(item)) continue;
-      const s = scoreItem(item, tagsA, tagsB, mode);
-      candidates.push({ item, ...s });
+      if (!kindOk(item)) continue;
+      if (mem.dislikes.includes(item.title)) continue;
+      if (item.preschoolish && !isExplicitlyTyped(item.title)) continue;
+      const sc = scoreItem(item, tagsA, tagsB, mode);
+      relaxed.push({ item, sc });
     }
-
-    candidates.sort((a,b)=>b.score-a.score);
-    let top = candidates.slice(0,3);
-
-    // fallback: relax only "recently watched"
-    if (top.length < 3) {
-      const relaxed = [];
-      const enabled = getEnabledPlatforms();
-      for (const item of lib) {
-        if (!enabled.has(item.platform)) continue;
-        if (!modeOk(item, mode)) continue;
-        if (!kindOk(item)) continue;
-        if (mem.dislikes.includes(item.title)) continue;
-        if (item.preschoolish && !isExplicitlyTyped(item.title)) continue;
-
-        const s = scoreItem(item, tagsA, tagsB, mode);
-        relaxed.push({ item, ...s });
-      }
-      relaxed.sort((a,b)=>b.score-a.score);
-      top = relaxed.slice(0,3);
-    }
-
-    renderResults(top, {pickA, pickB, mode, scaryRequested, poolCount: candidates.length, totalCount: lib.length});
+    relaxed.sort((a,b)=>b.sc - a.sc);
+    top = relaxed.slice(0,3);
   }
 
-  function renderResults(top, ctx){
-    const out = document.getElementById("outCard");
-    out.style.display = "block";
+  renderResults(top, { pickA, pickB, mode, scaryRequested, poolCount: candidates.length, totalCount: lib.length });
+}
 
-    document.getElementById("modePill").textContent = `Mode: ${ctx.mode}`;
-    document.getElementById("fairPill").textContent = `Fairness: last winner ${mem.lastWinner || "none"}`;
-    document.getElementById("memPill").textContent = `Memory: ${mem.likes.length} likes • ${mem.dislikes.length} no-thanks`;
+function renderResults(top, ctx){
+  const out = document.getElementById("outCard");
+  out.style.display = "block";
 
-    const enabled = [...getEnabledPlatforms()].join(", ");
-    document.getElementById("platPill").textContent = `Platforms: ${enabled || "none"}`;
-    document.getElementById("poolPill").textContent = `Pool: ${ctx.poolCount} matches • Library: ${ctx.totalCount}`;
+  document.getElementById("modePill").textContent = `Mode: ${ctx.mode}`;
+  document.getElementById("fairPill").textContent = `Fairness: last winner ${mem.lastWinner || "none"}`;
+  document.getElementById("memPill").textContent = `Memory: ${mem.likes.length} likes • ${mem.dislikes.length} no-thanks`;
+  document.getElementById("platPill").textContent = `Platforms: ${[...getEnabledPlatforms()].join(", ") || "none"}`;
+  document.getElementById("poolPill").textContent = `Pool: ${ctx.poolCount} matches • Library: ${ctx.totalCount}`;
 
-    const container = document.getElementById("results");
-    container.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.className = "small";
-    header.innerHTML = `
+  const container = document.getElementById("results");
+  container.innerHTML = `
+    <div class="small">
       <div><strong>H:</strong> ${escapeHtml(ctx.pickA || "(none)")}</div>
       <div><strong>K:</strong> ${escapeHtml(ctx.pickB || "(none)")}</div>
       ${ctx.scaryRequested ? `<div class="warn"><strong>Blocked:</strong> scary requests. Showing safe picks only.</div>` : ""}
+    </div>
+    <div class="divider"></div>
+  `;
+
+  top.forEach((x, idx) => {
+    const it = x.item;
+    const div = document.createElement("div");
+    div.className = "result";
+    div.innerHTML = `
+      <p class="title">${idx+1}. ${escapeHtml(it.title)}</p>
+      <div class="meta">${escapeHtml(it.platform)} • ${escapeHtml(it.kind)} • ${escapeHtml(it.episodeLen)} • intensity: ${escapeHtml(it.intensity)}</div>
+      <div class="why">${escapeHtml(ctx.mode === "Bedtime" ? "Good bedtime fit based on both picks." : "Good weekend fit based on both picks.")}</div>
+      <div class="btnrow" style="margin-top:10px;">
+        <button class="good" type="button" data-act="watched" data-title="${escapeAttr(it.title)}">We watched it</button>
+        <button class="bad" type="button" data-act="dislike" data-title="${escapeAttr(it.title)}">No thanks</button>
+      </div>
     `;
-    container.appendChild(header);
+    container.appendChild(div);
+  });
 
-    const divider = document.createElement("div");
-    divider.className = "divider";
-    container.appendChild(divider);
-
-    top.forEach((x, idx) => {
-      const r = document.createElement("div");
-      r.className = "result";
-      r.innerHTML = `
-        <p class="title">${idx+1}. ${escapeHtml(x.item.title)}</p>
-        <div class="meta">${escapeHtml(x.item.platform)} • ${escapeHtml(x.item.kind)} • ${escapeHtml(x.item.episodeLen)} • intensity: ${escapeHtml(x.item.intensity)}</div>
-        <div class="why">${escapeHtml(buildWhy(x, ctx))}</div>
-        <div class="btnrow" style="margin-top:10px;">
-          <button class="good" type="button" data-act="watched" data-title="${escapeAttr(x.item.title)}">We watched it</button>
-          <button class="bad" type="button" data-act="dislike" data-title="${escapeAttr(x.item.title)}">No thanks</button>
-        </div>
-      `;
-      container.appendChild(r);
-    });
-
-    container.addEventListener("click", onResultClick, { once:false });
-  }
-
-  function buildWhy(x, ctx){
-    const bits = [];
-    if (x.item.themes.includes("food")) bits.push("food/competition");
-    if (x.item.themes.includes("science")) bits.push("curiosity");
-    if (x.item.vibeTags.includes("comfort")) bits.push("comfort");
-    if (x.item.vibeTags.includes("funny")) bits.push("funny");
-    if (x.item.vibeTags.includes("music")) bits.push("music");
-    bits.push(ctx.mode === "Bedtime" ? "bedtime pacing" : "weekend energy");
-    return `Fits both of you with ${bits.join(", ")}.`;
-  }
-
-  function onResultClick(e){
+  container.onclick = (e) => {
     const btn = e.target.closest("button[data-act]");
     if (!btn) return;
     const act = btn.getAttribute("data-act");
@@ -695,179 +446,192 @@ const BACKFILL_LIB = [
 
     if (act === "watched") {
       if (!mem.likes.includes(title)) mem.likes.push(title);
-      mem.recentlyWatched.unshift({title, ts: Date.now()});
-      mem.recentlyWatched = mem.recentlyWatched.slice(0, 120);
+      mem.recentlyWatched.unshift({ title, ts: Date.now() });
+      mem.recentlyWatched = mem.recentlyWatched.slice(0, 200);
 
       const lib = getLib();
       const item = lib.find(x=>x.title===title);
-      const tagsA = tagsFromText(document.getElementById("pickA").value);
-      const tagsB = tagsFromText(document.getElementById("pickB").value);
-      const aFit = tagsA.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
-      const bFit = tagsB.filter(t => item.vibeTags.includes(t) || item.themes.includes(t)).length;
+      const aFit = tagsFromText(document.getElementById("pickA").value).filter(t => (item.vibeTags||[]).includes(t) || (item.themes||[]).includes(t)).length;
+      const bFit = tagsFromText(document.getElementById("pickB").value).filter(t => (item.vibeTags||[]).includes(t) || (item.themes||[]).includes(t)).length;
       mem.lastWinner = (aFit === bFit) ? (mem.lastWinner === "H" ? "K" : "H") : (aFit > bFit ? "H" : "K");
 
       saveMem(mem);
       pick3();
-    }
-
-    if (act === "dislike") {
+    } else if (act === "dislike") {
       if (!mem.dislikes.includes(title)) mem.dislikes.push(title);
       mem.likes = mem.likes.filter(x=>x!==title);
       saveMem(mem);
       pick3();
     }
+  };
+}
+
+/* ===========
+   Mode
+=========== */
+function setMode(mode){
+  mem.mode = mode;
+  saveMem(mem);
+  const bed = document.getElementById("modeBed");
+  const wk = document.getElementById("modeWknd");
+  const note = document.getElementById("modeNote");
+  if (mode === "Bedtime") {
+    bed.classList.add("primary"); wk.classList.remove("primary");
+    note.textContent = "Bedtime = calmer, lower tension, avoid cliffhangers.";
+  } else {
+    wk.classList.add("primary"); bed.classList.remove("primary");
+    note.textContent = "Weekend = more energy allowed (still safe, never scary).";
+  }
+}
+
+/* ===========
+   Bulk import (custom titles)
+=========== */
+function showAdd(open){
+  document.getElementById("addCard").style.display = open ? "block" : "none";
+  if (open) renderCustomList();
+}
+function normalizeTitle(s){ return (s||"").trim().replace(/\s+/g," "); }
+
+function parseLine(line, defaults){
+  // Title | Platform | show/movie | bedtime yes/no | weekend yes/no
+  const parts = line.split("|").map(x=>x.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const title = normalizeTitle(parts[0] || "");
+  if (!title) return null;
+  if (SCARY_WORDS.test(title)) return { skip:true, reason:"scary keyword", title };
+
+  const platform = (parts[1] || defaults.platform || "Netflix");
+  const kind = (String(parts[2] || defaults.kind || "show").toLowerCase()==="movie") ? "movie" : "show";
+
+  const bed = String(parts[3] || "yes").toLowerCase();
+  const wk  = String(parts[4] || "yes").toLowerCase();
+  const bedtimeOk = !(bed==="no" || bed==="false" || bed==="0");
+  const weekendOk = !(wk==="no" || wk==="false" || wk==="0");
+
+  const tags = autoTagsForTitle(title);
+  const vibeTags = tags.filter(t=>["funny","comfort","competition","curious","clever","music","uplifting","adventure","chaotic","fast"].includes(t));
+  const themes = tags.filter(t=>!vibeTags.includes(t));
+  if (vibeTags.length === 0) vibeTags.push("comfort");
+  if (themes.length === 0) themes.push("family");
+
+  // default intensity/len
+  const intensity = (kind==="movie") ? "medium" : "low";
+  const episodeLen = (kind==="movie") ? "movie" : "20-30";
+
+  return normalizeItem({
+    title, platform, kind, bedtimeOk, weekendOk, intensity, episodeLen,
+    preschoolish:false, ageMin:7, ageMax:13, vibeTags, themes
+  });
+}
+
+function importBulk(){
+  const msg = document.getElementById("addMsg");
+  msg.textContent = "";
+
+  const text = document.getElementById("bulkText").value || "";
+  const lines = text.split("\n").map(x=>x.trim()).filter(Boolean);
+
+  const defaults = {
+    platform: document.getElementById("bulkDefaultPlatform").value,
+    kind: document.getElementById("bulkDefaultKind").value
+  };
+
+  if (lines.length === 0) { msg.textContent = "Paste at least one line."; return; }
+
+  mem.customLib = Array.isArray(mem.customLib) ? mem.customLib : [];
+
+  let added = 0, skipped = 0, dup = 0;
+  for (const line of lines) {
+    const parsed = parseLine(line, defaults);
+    if (!parsed) { skipped++; continue; }
+    if (parsed.skip) { skipped++; continue; }
+
+    const key = `${parsed.title}||${parsed.platform}||${parsed.kind}`.toLowerCase();
+    const exists = mem.customLib.some(x => `${x.title}||${x.platform}||${x.kind}`.toLowerCase() === key);
+    if (exists) { dup++; continue; }
+
+    mem.customLib.unshift(parsed);
+    added++;
   }
 
-  // ==========
-  // Mode
-  // ==========
-  function setMode(mode){
-    mem.mode = mode;
+  mem.customLib = mem.customLib.slice(0, 800);
+  saveMem(mem);
+
+  msg.innerHTML = `<div class="ok"><strong>Imported:</strong> ${added} added • ${dup} duplicates ignored • ${skipped} skipped</div>`;
+  renderCustomList();
+}
+
+function renderCustomList(){
+  const box = document.getElementById("customList");
+  const items = Array.isArray(mem.customLib) ? mem.customLib : [];
+  box.innerHTML = "";
+
+  if (items.length === 0) {
+    box.innerHTML = `<div class="small">No custom titles yet.</div>`;
+    return;
+  }
+
+  items.slice(0, 40).forEach((it, idx) => {
+    const d = document.createElement("div");
+    d.className = "listItem";
+    d.innerHTML = `
+      <div>
+        <b>${escapeHtml(it.title)}</b>
+        <div class="sub">${escapeHtml(it.platform)} • ${escapeHtml(it.kind)} • ${it.bedtimeOk ? "Bedtime" : ""}${it.bedtimeOk && it.weekendOk ? " & " : ""}${it.weekendOk ? "Weekend" : ""}</div>
+      </div>
+      <div><button class="bad" type="button" data-rm="${idx}">Remove</button></div>
+    `;
+    box.appendChild(d);
+  });
+
+  box.onclick = (e) => {
+    const btn = e.target.closest("button[data-rm]");
+    if (!btn) return;
+    const idx = parseInt(btn.getAttribute("data-rm"), 10);
+    if (Number.isNaN(idx)) return;
+    mem.customLib.splice(idx, 1);
     saveMem(mem);
-    const bed = document.getElementById("modeBed");
-    const wk = document.getElementById("modeWknd");
-    const note = document.getElementById("modeNote");
-    if (mode === "Bedtime") {
-      bed.classList.add("primary"); wk.classList.remove("primary");
-      note.textContent = "Bedtime = calmer, lower tension, avoid cliffhangers.";
-    } else {
-      wk.classList.add("primary"); bed.classList.remove("primary");
-      note.textContent = "Weekend = more energy allowed (still safe, never scary).";
-    }
-  }
-
-  // ==========
-  // Add-title UI
-  // ==========
-  function showAdd(open){
-    document.getElementById("addCard").style.display = open ? "block" : "none";
-    if (open) renderCustomList();
-  }
-
-  function normalizeTitle(s){
-    return (s||"").trim().replace(/\s+/g," ");
-  }
-
-  function saveNewTitle(){
-    const title = normalizeTitle(document.getElementById("newTitle").value);
-    const platform = document.getElementById("newPlatform").value;
-    const kind = document.getElementById("newKind").value;
-    const intensity = document.getElementById("newIntensity").value;
-    const bedtimeOk = document.getElementById("newBedOk").checked;
-    const weekendOk = document.getElementById("newWkndOk").checked;
-    const preschoolish = document.getElementById("newPreschool").checked;
-
-    const msg = document.getElementById("addMsg");
-    msg.textContent = "";
-
-    if (!title) { msg.textContent = "Type a title first."; return; }
-    if (SCARY_WORDS.test(title)) { msg.innerHTML = `<div class="warn">That title looks scary/spooky by keyword. Skipping it.</div>`; return; }
-    if (!bedtimeOk && !weekendOk) { msg.textContent = "Check Bedtime OK or Weekend OK (or both)."; return; }
-
-    const rawTags = (document.getElementById("newTags").value || "").trim();
-    let tags = rawTags ? rawTags.split(",").map(x=>x.trim().toLowerCase()).filter(Boolean) : autoTagsForTitle(title);
-
-    // convert tags into vibeTags/themes split (lightweight)
-    const vibeTags = [];
-    const themes = [];
-    for (const t of tags) {
-      if (["funny","comfort","competition","curious","clever","music","uplifting","adventure","chaotic","fast"].includes(t)) vibeTags.push(t);
-      else themes.push(t);
-    }
-    if (vibeTags.length === 0) vibeTags.push("comfort");
-    if (themes.length === 0) themes.push("family");
-
-    // If user adds something “babyish”, keep it suppressed unless typed
-    const item = I(title, platform, kind, vibeTags, themes, intensity, kind==="movie" ? "movie" : "20-30", 7, 13, bedtimeOk, weekendOk, preschoolish);
-
-    // prevent duplicates (title+platform+kind)
-    const key = `${title}||${platform}||${kind}`.toLowerCase();
-    const existing = (mem.customLib||[]).some(x => `${x.title}||${x.platform}||${x.kind}`.toLowerCase() === key);
-    if (existing) { msg.textContent = "That title is already in your added list."; return; }
-
-    mem.customLib = Array.isArray(mem.customLib) ? mem.customLib : [];
-    mem.customLib.unshift(item);
-    mem.customLib = mem.customLib.slice(0, 500); // cap to keep storage safe
-    saveMem(mem);
-
-    msg.innerHTML = `<div class="ok"><strong>Saved:</strong> ${escapeHtml(title)} (${platform})</div>`;
-    document.getElementById("newTitle").value = "";
-    document.getElementById("newTags").value = "";
-    document.getElementById("newPreschool").checked = false;
     renderCustomList();
-  }
+  };
+}
 
-  function renderCustomList(){
-    const box = document.getElementById("customList");
-    const items = Array.isArray(mem.customLib) ? mem.customLib : [];
-    box.innerHTML = "";
+/* ===========
+   Wire up
+=========== */
+document.getElementById("modeBed").addEventListener("click", ()=>setMode("Bedtime"));
+document.getElementById("modeWknd").addEventListener("click", ()=>setMode("Weekend"));
+document.getElementById("go").addEventListener("click", pick3);
+document.getElementById("reroll").addEventListener("click", pick3);
 
-    if (items.length === 0) {
-      box.innerHTML = `<div class="small">No custom titles yet.</div>`;
-      return;
-    }
+document.getElementById("openAdd").addEventListener("click", ()=>showAdd(true));
+document.getElementById("closeAdd").addEventListener("click", ()=>showAdd(false));
+document.getElementById("saveBulk").addEventListener("click", importBulk);
+document.getElementById("clearCustom").addEventListener("click", ()=>{
+  mem.customLib = [];
+  saveMem(mem);
+  renderCustomList();
+  document.getElementById("addMsg").innerHTML = `<div class="ok">Cleared your added titles.</div>`;
+});
 
-    items.slice(0, 30).forEach((it, idx) => {
-      const d = document.createElement("div");
-      d.className = "listItem";
-      d.innerHTML = `
-        <div>
-          <b>${escapeHtml(it.title)}</b>
-          <div class="sub">${escapeHtml(it.platform)} • ${escapeHtml(it.kind)} • ${escapeHtml(it.intensity)} • ${it.bedtimeOk ? "Bedtime" : ""}${it.bedtimeOk && it.weekendOk ? " & " : ""}${it.weekendOk ? "Weekend" : ""}${it.preschoolish ? " • typed-only" : ""}</div>
-        </div>
-        <div>
-          <button class="bad" type="button" data-rm="${idx}">Remove</button>
-        </div>
-      `;
-      box.appendChild(d);
-    });
-
-    box.onclick = (e) => {
-      const btn = e.target.closest("button[data-rm]");
-      if (!btn) return;
-      const idx = parseInt(btn.getAttribute("data-rm"), 10);
-      if (Number.isNaN(idx)) return;
-      mem.customLib.splice(idx, 1);
-      saveMem(mem);
-      renderCustomList();
-    };
-  }
-
-  // ==========
-  // Helpers
-  // ==========
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
-  function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
-
-  // ==========
-  // Wire up UI
-  // ==========
-  document.getElementById("modeBed").addEventListener("click", ()=>setMode("Bedtime"));
-  document.getElementById("modeWknd").addEventListener("click", ()=>setMode("Weekend"));
-  document.getElementById("go").addEventListener("click", pick3);
-  document.getElementById("reroll").addEventListener("click", pick3);
-
-  document.getElementById("openAdd").addEventListener("click", ()=>showAdd(true));
-  document.getElementById("closeAdd").addEventListener("click", ()=>showAdd(false));
-  document.getElementById("saveAdd").addEventListener("click", saveNewTitle);
-
-  document.getElementById("reset").addEventListener("click", ()=>{
-    localStorage.removeItem(STORAGE_KEY);
-    mem = loadMem();
-    setMode(mem.mode);
-    showAdd(false);
-    document.getElementById("outCard").style.display = "none";
-  });
-
-  // rerun when toggles change
-  ["pNetflix","pDisney","pParamount","pPeacock","fShort","fNoLoud","fNoSad","fNoFight","fMoviesOK","fShowsOK"].forEach(id=>{
-    document.getElementById(id).addEventListener("change", ()=>{
-      if (document.getElementById("outCard").style.display !== "none") pick3();
-    });
-  });
-
-  // init
+document.getElementById("reset").addEventListener("click", ()=>{
+  localStorage.removeItem(STORAGE_KEY);
+  mem = loadMem();
   setMode(mem.mode);
+  showAdd(false);
+  document.getElementById("outCard").style.display = "none";
+});
+
+["pNetflix","pDisney","pParamount","pPeacock","fShort","fNoLoud","fNoSad","fNoFight","fMoviesOK","fShowsOK"].forEach(id=>{
+  document.getElementById(id).addEventListener("change", ()=>{
+    if (document.getElementById("outCard").style.display !== "none") pick3();
+  });
+});
+
+// init
+setMode(mem.mode);
+loadLibrary();
 </script>
 </body>
 </html>
