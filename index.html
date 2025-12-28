@@ -403,7 +403,24 @@ function pick3(){
     candidates.push({ item, sc });
   }
   candidates.sort((a,b)=>b.sc - a.sc);
-  let top = candidates.slice(0,3);
+
+// Take a bigger bucket of good matches, then randomize
+const topBucketSize = Math.min(60, candidates.length);
+let bucket = candidates.slice(0, topBucketSize);
+
+// Avoid repeats
+const { key: rKey, set: recentSet } = getRecentSet(mode);
+bucket = bucket.filter(x => !recentSet.has(String(x.item.title).toLowerCase()));
+
+// If the repeat filter makes it too small, relax it a bit
+if (bucket.length < 10) bucket = candidates.slice(0, Math.min(80, candidates.length));
+
+// Shuffle and take 3
+bucket = shuffle(bucket);
+let top = bucket.slice(0, 3);
+
+// Save picked titles so next click changes
+saveRecent(rKey, top.map(x => x.item.title));
 
   // fallback: ignore repeat rule only
   if (top.length < 3) {
