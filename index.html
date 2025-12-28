@@ -355,6 +355,30 @@ function scoreItem(item, tagsA, tagsB, mode){
 /* ===========
    Recommend
 =========== */
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function recentKeyForMode(mode){
+  return "bp_recent_" + (mode || "any").toLowerCase();
+}
+
+function getRecentSet(mode){
+  const key = recentKeyForMode(mode);
+  const recent = JSON.parse(localStorage.getItem(key) || "[]");
+  return { key, set: new Set(recent.map(x => String(x).toLowerCase())) };
+}
+
+function saveRecent(key, titles){
+  const existing = JSON.parse(localStorage.getItem(key) || "[]");
+  const next = [...titles, ...existing].slice(0, 30); // keep last 30
+  localStorage.setItem(key, JSON.stringify(next));
+}
 function pick3(){
   const pickA = document.getElementById("pickA").value.trim();
   const pickB = document.getElementById("pickB").value.trim();
